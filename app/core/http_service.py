@@ -24,7 +24,8 @@ class HttpService:
         agent_name: str = "coder",
     ):
         provider = (
-            get_provider(provider_name) if provider_name else get_default_provider()
+            get_provider(
+                provider_name) if provider_name else get_default_provider()
         )
         if not provider:
             raise ValueError("No provider configured.")
@@ -66,7 +67,7 @@ class HttpService:
             base_url=self.base_url,
             timeout=120.0,
             default_headers={
-                "HTTP-Referer": "https://github.com/open-dev-project/open-dev",
+                "HTTP-Referer": "https://github.com/selcuksarikoz/opendev",
                 "X-Title": "OpenDev CLI",
             },
         )
@@ -106,7 +107,8 @@ class HttpService:
         if not self.api_key:
             raise ValueError(f"No API key for {self.provider_name}.")
 
-        full_messages = self.prompt_builder.build_messages(messages, self.model)
+        full_messages = self.prompt_builder.build_messages(
+            messages, self.model)
         openai_tools = self._build_tools(tools)
         start_time = time.time()
         input_tokens, output_tokens = 0, 0
@@ -171,7 +173,8 @@ class HttpService:
                         usage = getattr(chunk, "usage", None)
                         if usage:
                             input_tokens = getattr(usage, "prompt_tokens", 0)
-                            output_tokens = getattr(usage, "completion_tokens", 0)
+                            output_tokens = getattr(
+                                usage, "completion_tokens", 0)
                         continue
 
                     choice = chunk.choices[0]
@@ -205,15 +208,18 @@ class HttpService:
 
                 for tc in tool_calls_acc.values():
                     try:
-                        args = json.loads(tc["arguments"]) if tc["arguments"] else {}
+                        args = json.loads(
+                            tc["arguments"]) if tc["arguments"] else {}
                         yield (
                             "tool_call",
-                            {"id": tc["id"], "name": tc["name"], "arguments": args},
+                            {"id": tc["id"], "name": tc["name"],
+                                "arguments": args},
                         )
                     except:
                         yield (
                             "tool_call",
-                            {"id": tc["id"], "name": tc["name"], "arguments": {}},
+                            {"id": tc["id"], "name": tc["name"],
+                                "arguments": {}},
                         )
 
         except Exception as e:
