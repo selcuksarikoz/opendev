@@ -85,22 +85,10 @@ PY
 
 echo "Version bumped to: ${NEW_VERSION}"
 
-rm -rf build dist
-uv tool run pyinstaller --onefile --name opendev app/__main__.py
-
 OS_NAME="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH_NAME="$(uname -m)"
 ARTIFACT_DIR="artifacts/v${NEW_VERSION}"
 mkdir -p "${ARTIFACT_DIR}"
-
-if [[ -f "dist/opendev" ]]; then
-  cp "dist/opendev" "${ARTIFACT_DIR}/opendev-${OS_NAME}-${ARCH_NAME}"
-elif [[ -f "dist/opendev.exe" ]]; then
-  cp "dist/opendev.exe" "${ARTIFACT_DIR}/opendev-${OS_NAME}-${ARCH_NAME}.exe"
-else
-  echo "Error: built binary not found in dist/"
-  exit 1
-fi
 
 MAC_ARCH=""
 if [[ "${OS_NAME}" == "darwin" ]]; then
@@ -110,14 +98,65 @@ if [[ "${OS_NAME}" == "darwin" ]]; then
   esac
 fi
 
+rm -rf build dist
+
+if [[ "${OS_NAME}" == "darwin" ]]; then
+  echo "Building macOS arm64 binary..."
+  uv tool run pyinstaller \
+    --onefile \
+    --name opendev \
+    --target-arch arm64 \
+    --distpath dist/arm64 \
+    --workpath build/arm64 \
+    --specpath build/spec/arm64 \
+    app/__main__.py
+
+  echo "Building macOS x86_64 binary..."
+  uv tool run pyinstaller \
+    --onefile \
+    --name opendev \
+    --target-arch x86_64 \
+    --distpath dist/x86_64 \
+    --workpath build/x86_64 \
+    --specpath build/spec/x86_64 \
+    app/__main__.py
+
+  cp "dist/${MAC_ARCH}/opendev" "${ARTIFACT_DIR}/opendev-${OS_NAME}-${ARCH_NAME}"
+else
+  uv tool run pyinstaller --onefile --name opendev app/__main__.py
+  if [[ -f "dist/opendev" ]]; then
+    cp "dist/opendev" "${ARTIFACT_DIR}/opendev-${OS_NAME}-${ARCH_NAME}"
+  elif [[ -f "dist/opendev.exe" ]]; then
+    cp "dist/opendev.exe" "${ARTIFACT_DIR}/opendev-${OS_NAME}-${ARCH_NAME}.exe"
+  else
+    echo "Error: built binary not found in dist/"
+    exit 1
+  fi
+fi
+
 if [[ -n "${MAC_ARCH}" ]]; then
-  MAC_STAGE_DIR="${ARTIFACT_DIR}/opendev-macos-${MAC_ARCH}"
-  mkdir -p "${MAC_STAGE_DIR}"
-  cp "dist/opendev" "${MAC_STAGE_DIR}/opendev"
-  TAR_PATH="${ARTIFACT_DIR}/opendev-macos-${MAC_ARCH}.tar.gz"
-  tar -C "${MAC_STAGE_DIR}" -czf "${TAR_PATH}" "opendev"
-  SHA256="$(shasum -a 256 "${TAR_PATH}" | awk '{print $1}')"
-  printf "%s  %s\n" "${SHA256}" "$(basename "${TAR_PATH}")" > "${ARTIFACT_DIR}/sha256.txt"
+  ARM64_STAGE_DIR="${ARTIFACT_DIR}/opendev-macos-arm64"
+  X86_64_STAGE_DIR="${ARTIFACT_DIR}/opendev-macos-x86_64"
+  ARM64_TAR="${ARTIFACT_DIR}/opendev-macos-arm64.tar.gz"
+  X86_64_TAR="${ARTIFACT_DIR}/opendev-macos-x86_64.tar.gz"
+
+  mkdir -p "${ARM64_STAGE_DIR}" "${X86_64_STAGE_DIR}"
+  cp "dist/arm64/opendev" "${ARM64_STAGE_DIR}/opendev"
+  cp "dist/x86_64/opendev" "${X86_64_STAGE_DIR}/opendev"
+  tar -C "${ARM64_STAGE_DIR}" -czf "${ARM64_TAR}" "opendev"
+  tar -C "${X86_64_STAGE_DIR}" -czf "${X86_64_TAR}" "opendev"
+
+  ARM64_SHA="$(shasum -a 256 "${ARM64_TAR}" | awk '{print $1}')"
+  X86_64_SHA="$(shasum -a 256 "${X86_64_TAR}" | awk '{print $1}')"
+
+  if [[ -z "${ARM64_SHA}" || -z "${X86_64_SHA}" ]]; then
+    echo "Error: both macOS SHA256 values are required to update Formula/opendev.rb."
+    exit 1
+  fi
+  {
+    printf "%s  %s\n" "${ARM64_SHA}" "opendev-macos-arm64.tar.gz"
+    printf "%s  %s\n" "${X86_64_SHA}" "opendev-macos-x86_64.tar.gz"
+  } > "${ARTIFACT_DIR}/sha256.txt"
 
   # Update Homebrew tap formula locally (commit, no push)
   TAP_REPO_URL="${TAP_REPO_URL:-https://github.com/selcuksarikoz/homebrew-opendev.git}"
@@ -127,25 +166,27 @@ if [[ -n "${MAC_ARCH}" ]]; then
   fi
   FORMULA_DIR="${TAP_DIR}/Formula"
   FORMULA_PATH="${FORMULA_DIR}/opendev.rb"
+  LOCAL_FORMULA_DIR="${ROOT_DIR}/Formula"
+  LOCAL_FORMULA_PATH="${LOCAL_FORMULA_DIR}/opendev.rb"
   mkdir -p "${FORMULA_DIR}"
-  ASSET_URL="https://github.com/selcuksarikoz/opendev/releases/download/v${NEW_VERSION}/opendev-macos-${MAC_ARCH}.tar.gz"
-  if [[ "${MAC_ARCH}" == "arm64" ]]; then
-    CPU_CHECK="arm?"
-  else
-    CPU_CHECK="intel?"
-  fi
-  cat > "${FORMULA_PATH}" <<RUBY
+  mkdir -p "${LOCAL_FORMULA_DIR}"
+  ARM64_URL="https://github.com/selcuksarikoz/opendev/releases/download/v${NEW_VERSION}/opendev-macos-arm64.tar.gz"
+  X86_64_URL="https://github.com/selcuksarikoz/opendev/releases/download/v${NEW_VERSION}/opendev-macos-x86_64.tar.gz"
+  FORMULA_CONTENT="$(cat <<RUBY
 class Opendev < Formula
   desc "Terminal-first AI coding assistant focused on free/community models"
   homepage "https://github.com/selcuksarikoz/opendev"
   version "${NEW_VERSION}"
 
   if OS.mac?
-    if Hardware::CPU.${CPU_CHECK}
-      url "${ASSET_URL}"
-      sha256 "${SHA256}"
+    if Hardware::CPU.arm?
+      url "${ARM64_URL}"
+      sha256 "${ARM64_SHA}"
+    elsif Hardware::CPU.intel?
+      url "${X86_64_URL}"
+      sha256 "${X86_64_SHA}"
     else
-      odie "No published binary for this macOS CPU in v${NEW_VERSION}."
+      odie "Unsupported macOS CPU."
     end
   else
     odie "Homebrew formula currently ships macOS binaries only."
@@ -160,6 +201,9 @@ class Opendev < Formula
   end
 end
 RUBY
+)"
+  printf "%s\n" "${FORMULA_CONTENT}" > "${FORMULA_PATH}"
+  printf "%s\n" "${FORMULA_CONTENT}" > "${LOCAL_FORMULA_PATH}"
   pushd "${TAP_DIR}" >/dev/null
   if ! git diff --quiet -- "${FORMULA_PATH}"; then
     git add "${FORMULA_PATH}"
@@ -181,7 +225,8 @@ echo "Created commit + tag: v${NEW_VERSION}"
 echo "Built artifact(s): ${ARTIFACT_DIR}"
 if [[ -n "${MAC_ARCH}" ]]; then
   echo "macOS archive: ${ARTIFACT_DIR}/opendev-macos-${MAC_ARCH}.tar.gz"
-  echo "SHA256: ${SHA256}"
+  echo "SHA256 arm64: ${ARM64_SHA}"
+  echo "SHA256 x86_64: ${X86_64_SHA}"
   echo "Tap repo: ${TAP_DIR}"
 fi
 echo "Push manually when ready:"
@@ -189,6 +234,6 @@ echo "  git push origin HEAD"
 echo "  git push origin v${NEW_VERSION}"
 if [[ -n "${MAC_ARCH}" ]]; then
   echo
-  echo "After pushing tag, create GitHub release and upload tar.gz:"
-  echo "  gh release create v${NEW_VERSION} ${ARTIFACT_DIR}/opendev-macos-${MAC_ARCH}.tar.gz --title \"v${NEW_VERSION}\" --notes \"Release v${NEW_VERSION}\""
+  echo "After pushing tag, create GitHub release and upload both tar.gz files:"
+  echo "  gh release create v${NEW_VERSION} ${ARTIFACT_DIR}/opendev-macos-arm64.tar.gz ${ARTIFACT_DIR}/opendev-macos-x86_64.tar.gz --title \"v${NEW_VERSION}\" --notes \"Release v${NEW_VERSION}\""
 fi

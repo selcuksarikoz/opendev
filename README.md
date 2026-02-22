@@ -23,6 +23,11 @@ brew install opendev
 
 If your tap repo name is different (for example `homebrew-ssrok`), use that tap path instead.
 
+How Homebrew finds it:
+- The tap repo (`homebrew-opendev`) contains `Formula/opendev.rb`.
+- That formula points to GitHub release assets for `opendev`.
+- This repo also includes `Formula/opendev.rb` as a synced reference template.
+
 ### From Source
 
 If you want to run it in your dev environment:
@@ -97,8 +102,8 @@ Supported version bumps:
 
 The script will:
 1. Bump version in `pyproject.toml`
-2. Build binary with PyInstaller
-3. Package macOS archive (`opendev-macos-arm64.tar.gz` or `opendev-macos-x86_64.tar.gz`)
+2. Build macOS binaries for both Apple Silicon (`arm64`) and Intel (`x86_64`) with PyInstaller
+3. Package both macOS archives (`opendev-macos-arm64.tar.gz` and `opendev-macos-x86_64.tar.gz`)
 4. Generate SHA256
 5. Update local Homebrew tap formula commit (`homebrew-opendev`)
 6. Create release commit
@@ -109,7 +114,7 @@ It does **not** push. You push manually.
 Then publish release asset (after pushing tag):
 
 ```bash
-gh release create vX.Y.Z artifacts/vX.Y.Z/opendev-macos-<arch>.tar.gz --title "vX.Y.Z" --notes "Release vX.Y.Z"
+gh release create vX.Y.Z artifacts/vX.Y.Z/opendev-macos-arm64.tar.gz artifacts/vX.Y.Z/opendev-macos-x86_64.tar.gz --title "vX.Y.Z" --notes "Release vX.Y.Z"
 ```
 
 ## How to use
@@ -129,6 +134,7 @@ Everything is controlled by the `providers.json` file.
 | `/settings`        | Configure AI settings (max tokens, temperature, top_p) |
 | `/new` or `/clear` | Start new conversation                                 |
 | `/compact`         | Compact conversation context                           |
+| `/update`          | Check/install updates via Homebrew                     |
 | `/help`            | Show available commands                                |
 
 ### Quick Actions

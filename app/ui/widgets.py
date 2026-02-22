@@ -500,6 +500,7 @@ class CustomInput(Input):
             "/agents",
             "/clear",
             "/clean history",
+            "/update",
             "/help",
             "/settings",
             "/compact",

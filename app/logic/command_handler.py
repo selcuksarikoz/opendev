@@ -23,7 +23,7 @@ class CommandHandler:
 
         if cmd.startswith("/help"):
             self.app.notify(
-                "Commands: /new, /clear, /model, /agents, /clean history, /help, /settings, /compact",
+                "Commands: /new, /clear, /model, /agents, /clean history, /update, /help, /settings, /compact",
                 severity="information",
             )
 
@@ -39,6 +39,9 @@ class CommandHandler:
 
         elif cmd.startswith("/clean history"):
             await self.app.clean_history()
+
+        elif cmd.startswith("/update"):
+            self.app.run_update()
 
         elif cmd.startswith("/settings"):
             from app.ui.screens import SettingsScreen

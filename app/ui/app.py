@@ -28,6 +28,7 @@ from app.ui.screens import WelcomeScreen, ChatScreen
 from app.utils.logger import log_error
 from app.logic.ai_handler import AIHandler
 from app.logic.command_handler import CommandHandler
+from app.utils.updater import check_update_available, install_or_upgrade
 
 
 class OpenDevApp(App):
@@ -75,6 +76,7 @@ class OpenDevApp(App):
             self.http_service = HttpService()
             await self.http_service.initialize()
         self.push_screen(WelcomeScreen())
+        self.check_updates_on_startup()
 
     async def on_unmount(self) -> None:
         self.is_shutting_down = True
@@ -325,6 +327,39 @@ class OpenDevApp(App):
         after_count = len(after)
         deleted = before_count - after_count
         self.notify(f"History cleaned. Deleted {deleted} message(s).")
+
+    @work(exclusive=True)
+    async def check_updates_on_startup(self) -> None:
+        result = await check_update_available()
+        if not result.get("ok"):
+            return
+        if result.get("update_available"):
+            latest = result.get("latest_version", "latest")
+            self.notify(f"Update available: {latest}. Run /update.")
+
+    @work(exclusive=True)
+    async def run_update(self) -> None:
+        self.notify("Running update via Homebrew...")
+        result = await install_or_upgrade()
+        if result.get("ok"):
+            action = result.get("action", "upgrade")
+            self.notify(f"Homebrew {action} completed. Restart opendev.")
+            return
+
+        reason = result.get("reason", "")
+        if reason == "brew_not_found":
+            self.notify("Homebrew not found. Install brew first.", severity="error")
+        elif reason == "unsupported_platform":
+            self.notify(
+                "Auto update is supported on macOS/Linux with Homebrew.",
+                severity="warning",
+            )
+        else:
+            stderr = result.get("stderr", "")
+            self.notify(
+                f"Update failed. {stderr or 'Check brew/tap configuration.'}",
+                severity="error",
+            )
 
     def _format_short(self, num: float, is_currency: bool = False) -> str:
         if is_currency:
