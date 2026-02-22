@@ -1,0 +1,12 @@
+[
+  "Use /model to switch between different AI models and providers.",
+  "Type /agents to list and switch between specialized AI agents.",
+  "Press Ctrl+C or Escape to cancel a streaming response at any time.",
+  "Press Ctrl+D to exit the application quickly.",
+  "Press Ctrl+L to clear the current chat history from the screen.",
+  "Markdown is supported! Use it to format your code and text.",
+  "Check the context percentage in the header to see how much room is left.",
+  "The current path is shown at the bottom for your reference.",
+  "You can ask for help by typing 'help' in the chat.",
+  "Try switching to a different agent if you need specialized help."
+]

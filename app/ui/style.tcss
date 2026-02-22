@@ -1,0 +1,507 @@
+/* 
+   DARK THEME PALETTE
+   ------------------
+   Colors for UI elements based on a darker theme.
+*/
+
+/* Global application background and text color */
+Screen {
+    background: #0d1117;
+    color: #c9d1d9;
+}
+
+/* Bottom status bar - showing current path, mode, and version */
+#status-bar {
+    dock: bottom;
+    height: 1;
+    background: transparent;
+    padding: 0 1;
+}
+
+#status-left, #status-center, #status-right {
+    width: auto;
+    color: #8b949e;
+}
+
+#status-left, #status-center {
+    margin-right: 1;
+}
+
+/* Screen container - centers child areas horizontally */
+#screen-container {
+    height: 100%;
+    width: 100%;
+    align-horizontal: center;
+}
+
+/* Header area - showing conversation title and context usage info */
+#chat-header {
+    height: 3;
+    background: #161b22;
+    padding: 0 4;
+    align: left middle;
+    width: 100%;
+    dock: top;
+}
+
+#conv-title {
+    width: 1fr;
+    text-style: bold;
+    color: #ffffff;
+}
+
+#context-info {
+    width: auto;
+    color: #8b949e;
+    margin-left: 2;
+}
+
+/* Message Area - Scrollable region for chat history */
+#message-area {
+    width: 98%; 
+    max-width: 180;
+    height: 1fr; 
+    padding: 0 0;
+    margin: 0 0;
+    scrollbar-size: 0 0; 
+    overflow-y: scroll;
+}
+
+/* Footer - Input area wrapper */
+#chat-footer {
+    height: auto;
+    width: 98%;
+    max-width: 180;
+    background: transparent;
+    margin-bottom: 0;
+    padding: 0 0;
+    align-horizontal: center;
+}
+
+#queue-overlay {
+    height: auto;
+    width: 100%;
+    min-height: 1;
+    margin-bottom: 0;
+    padding: 0 1;
+    display: none;
+    align-vertical: middle;
+}
+
+.queue-chip {
+    width: auto;
+    background: #21262d;
+    color: #c9d1d9;
+    text-style: bold;
+    margin-right: 1;
+}
+
+.queue-msg {
+    width: auto;
+    color: #8b949e;
+    margin-right: 2;
+}
+
+#input-wrapper {
+    background: #161b22;
+    padding: 1 1;
+    width: 100%;
+    height: auto;
+}
+
+#chat-meta {
+    height: 1;
+    margin-top: 0;
+    align-horizontal: right;
+    display: none;
+}
+
+/* Status labels for current mode and model */
+#meta-build-label {
+    width: auto;
+    color: #58a6ff;
+    margin-right: 1;
+    text-style: bold;
+}
+
+#meta-model {
+    width: auto;
+    color: #8b949e;
+}
+
+/* --- MESSAGE WRAPPERS & CONTAINERS --- */
+
+.message-container {
+    width: 100%;
+    height: auto;
+    margin-bottom: 0;
+    padding: 0;
+    align-horizontal: center;
+}
+
+/* Add separation between different speaker turns */
+.user-wrapper {
+    margin-top: 1;
+    margin-bottom: 1;
+}
+
+/* Base styles for all bubbles, tool blocks, and status lines for symmetric alignment */
+.message-bubble, .tool-call-container, .status-muted {
+    width: 100%;
+    max-width: 180;
+    height: auto;
+    background: transparent;
+    padding: 0 2;
+    margin: 0;
+    border-left: solid transparent; 
+}
+
+/* User-specific: thick cyan border */
+.user-bubble {
+    border-left: solid #39d353;
+}
+
+/* Assistant-specific: thick blue border */
+.assistant-bubble {
+    border-left: solid #58a6ff;
+}
+
+/* Tool calls and internal thinking status - shared blue border for a grouped look */
+.tool-call-container, .status-muted {
+    border-left: solid #58a6ff;
+}
+
+.tool-call-container {
+    height: 1;
+}
+
+/* Tool call details (icon, name, arguments) */
+.tool-icon {
+    width: auto;
+    margin-right: 1;
+    color: #39d353;
+}
+
+.tool-name {
+    width: auto;
+    text-style: bold;
+    color: #8b949e;
+    margin-right: 1;
+}
+
+.tool-args {
+    width: auto;
+    color: #6e7681;
+    text-style: italic;
+}
+
+/* Muted status text (e.g., 'Thinking...') */
+.status-muted {
+    color: #6e7681;
+    text-style: italic;
+    height: 1;
+}
+
+.content-label, .content-md {
+    width: 1fr;
+    color: #ffffff;
+}
+
+/* --- MARKDOWN SPACING OPTIMIZATION --- */
+
+Markdown {
+    margin: 0;
+    padding: 0;
+}
+
+Markdown > Block {
+    margin: 0;
+}
+
+Markdown > Paragraph {
+    margin: 0;
+    padding: 0;
+}
+
+Markdown > Heading {
+    margin-top: 1;
+    margin-bottom: 0;
+}
+
+/* Special borders for reasoning/thinking blocks within assistant turns */
+.thinking-bubble, .reasoning-bubble, .todo-bubble, .diff-bubble {
+    border-left: solid #58a6ff 40%;
+}
+
+/* --- INPUTS & FORMS --- */
+
+Input {
+    background: transparent;
+    border: none;
+    padding: 0 1;
+    color: #ffffff;
+    height: 1;
+    content-align: left middle;
+}
+
+Input:focus {
+    border: none;
+}
+
+/* --- WELCOME SCREEN SPECIFICS --- */
+
+#main-container {
+    width: 90%;
+    max-width: 120;
+    height: auto;
+    align: center middle;
+}
+
+#logo {
+    text-align: center;
+    color: #39d353;
+    margin-bottom: 2;
+    width: 100%;
+}
+
+#input-meta {
+    height: 1;
+    margin-top: 1;
+    align-horizontal: right;
+}
+
+#tips-area {
+    width: 100%;
+    max-width: 120;
+    text-align: center;
+    color: #39d353;
+    margin-top: 2;
+    height: 1;
+}
+
+/* --- UTILITIES & MODALS --- */
+
+LoadingIndicator {
+    dock: bottom;
+    height: 1;
+    width: 100%;
+    color: #39d353;
+    background: #161b22;
+    display: none;
+}
+LoadingIndicator.visible {
+    display: block;
+}
+
+SelectionModal, ApiKeyModal, PermissionModal {
+    align: center middle;
+}
+
+.permission-grid {
+    height: 4;
+    align: center middle;
+    margin-top: 1;
+}
+
+.permission-grid Button {
+    margin: 0 1;
+    min-width: 12;
+    width: 1fr;
+}
+
+#autocomplete-list {
+    position: absolute;
+    layer: overlay;
+    background: #161b22;
+    color: #f8fafc;
+    height: auto;
+    min-height: 4;
+    max-height: 14;
+    width: 60;
+    display: none;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 0;
+}
+
+#autocomplete-list.visible {
+    display: block;
+}
+
+#autocomplete-list ListItem {
+    color: #c9d1d9;
+    padding: 0 1;
+    height: 1;
+    background: transparent;
+}
+
+#autocomplete-list ListItem:focus,
+#autocomplete-list ListItem.-highlight {
+    background: #21262d;
+    color: #ffffff;
+}
+
+Button {
+    height: 3;
+    padding: 0 0;
+    border: none;
+}
+
+#modal-container {
+    width: 60;
+    height: auto;
+    max-height: 25;
+    background: #161b22;
+    border: solid #30363d;
+    padding: 1 2;
+}
+
+#modal-container.api-key-modal, #modal-container.permission-modal {
+    width: 80;
+    padding: 2 4;
+    border: solid #30363d;
+}
+
+#modal-title {
+    text-align: center;
+    text-style: bold;
+    margin-bottom: 1;
+    color: #ffffff;
+}
+
+.modal-subtitle {
+    text-align: center;
+    color: #8b949e;
+    margin-bottom: 1;
+}
+
+#modal-list {
+    height: auto;
+    max-height: 15;
+    margin-bottom: 1;
+    border: none;
+    background: #0d1117;
+    color: #c9d1d9;
+}
+
+#modal-list ListItem {
+    padding: 0 1;
+}
+
+#modal-list ListItem:hover {
+    background: #21262d;
+}
+
+.api-key-modal Input {
+    background: #0d1117;
+    border: solid #30363d;
+    margin: 1 0;
+    width: 100%;
+    padding: 0 1;
+    height: 3;
+}
+
+.modal-buttons {
+    height: 3;
+    align: center middle;
+    margin-top: 1;
+    width: 100%;
+}
+
+.modal-buttons Button {
+    margin: 0 1;
+    border: none;
+    background: #21262d;
+    color: #ffffff;
+    min-width: 12;
+    width: 1fr;
+}
+
+.modal-buttons Button:hover {
+    background: #30363d;
+}
+
+.modal-buttons Button.-primary {
+    background: #238636;
+}
+
+.modal-buttons Button.-error {
+    background: #da3633;
+}
+
+/* --- SETTINGS SCREEN --- */
+
+SettingsScreen {
+    align: center middle;
+}
+
+#settings-container {
+    width: 60;
+    height: auto;
+    background: #161b22;
+    border: solid #30363d;
+    padding: 2 3;
+}
+
+#settings-title {
+    text-align: center;
+    text-style: bold;
+    color: #58a6ff;
+    margin-bottom: 2;
+}
+
+.setting-row {
+    height: 2;
+    margin-bottom: 1;
+    align: left middle;
+}
+
+.setting-label {
+    width: 18;
+    color: #c9d1d9;
+}
+
+.setting-row Input {
+    width: 20;
+    height: 3;
+    background: #0d1117;
+    border: solid #30363d;
+    color: #ffffff;
+    padding: 0 1;
+}
+
+.setting-row Input:focus {
+    border: solid #58a6ff;
+}
+
+.settings-hint {
+    text-align: center;
+    color: #6e7681;
+    margin: 1 0;
+}
+
+.settings-buttons {
+    height: 3;
+    align: center middle;
+    margin-top: 1;
+}
+
+.settings-buttons Button {
+    margin: 0 2;
+    min-width: 12;
+    width: 1fr;
+}
+
+/* --- PLAN CONFIRM MODAL --- */
+
+.plan-summary {
+    color: #c9d1d9;
+    margin: 1 0;
+    padding: 1;
+}
+
+.plan-hint {
+    text-align: center;
+    color: #6e7681;
+    margin: 1 0;
+}

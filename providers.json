@@ -1,0 +1,81 @@
+{
+  "providers": [
+    {
+      "name": "OpenRouter",
+      "api_key": "",
+      "base_url": "https://openrouter.ai/api/v1",
+      "models": [
+        { "id": "stepfun/step-3.5-flash:free", "name": "Step 3.5 Flash (free)" },
+        { "id": "arcee-ai/trinity-large-preview:free", "name": "Trinity Large (free)" },
+        { "id": "arcee-ai/trinity-mini:free", "name": "Trinity Mini (free)" },
+        { "id": "upstage/solar-pro-3:free", "name": "Solar Pro 3 (free)" },
+        { "id": "openai/gpt-oss-120b:free", "name": "GPT OSS 120B (free)" },
+        { "id": "openai/gpt-oss-20b:free", "name": "GPT OSS 20B (free)" },
+        { "id": "qwen/qwen3-next-80b-a3b-instruct:free", "name": "Qwen3 Next 80B (free)" },
+        { "id": "qwen/qwen3-coder:free", "name": "Qwen3 Coder (free)" },
+        { "id": "qwen/qwen3-4b:free", "name": "Qwen3 4B (free)" },
+        { "id": "deepseek/deepseek-r1-0528:free", "name": "DeepSeek R1 (free)" },
+        { "id": "mistralai/mistral-small-3.1-24b-instruct:free", "name": "Mistral Small 3.1 (free)" },
+        { "id": "meta-llama/llama-3.3-70b-instruct:free", "name": "Llama 3.3 70B (free)" },
+        { "id": "meta-llama/llama-3.2-3b-instruct:free", "name": "Llama 3.2 3B (free)" },
+        { "id": "google/gemma-3-27b-it:free", "name": "Gemma 3 27B (free)" },
+        { "id": "google/gemma-3-12b-it:free", "name": "Gemma 3 12B (free)" },
+        { "id": "google/gemma-3-4b-it:free", "name": "Gemma 3 4B (free)" },
+        { "id": "google/gemma-3n-e4b-it:free", "name": "Gemma 3n E4B (free)" },
+        { "id": "google/gemma-3n-e2b-it:free", "name": "Gemma 3n E2B (free)" },
+        { "id": "z-ai/glm-4.5-air:free", "name": "GLM 4.5 Air (free)" },
+        { "id": "nvidia/nemotron-nano-9b-v2:free", "name": "Nemotron Nano 9B v2 (free)" },
+        { "id": "nvidia/nemotron-nano-12b-v2-vl:free", "name": "Nemotron Nano 12B VL (free)" },
+        { "id": "nvidia/nemotron-3-nano-30b-a3b:free", "name": "Nemotron 3 Nano 30B (free)" },
+        { "id": "liquid/lfm-2.5-1.2b-instruct:free", "name": "LFM 2.5 1.2B Instruct (free)" },
+        { "id": "liquid/lfm-2.5-1.2b-thinking:free", "name": "LFM 2.5 1.2B Thinking (free)" },
+        { "id": "nousresearch/hermes-3-llama-3.1-405b:free", "name": "Hermes 3 Llama 3.1 405B (free)" },
+        { "id": "cognitivecomputations/dolphin-mistral-24b-venice-edition:free", "name": "Dolphin Mistral 24B (free)" }
+      ],
+      "default_model": "stepfun/step-3.5-flash:free"
+    },
+    {
+      "name": "Qroq",
+      "api_key": "",
+      "base_url": "https://api.groq.com/openai/v1",
+      "models": [
+        { "id": "allam-2-7b", "name": "Allam 2 7B" },
+        { "id": "groq/compound", "name": "Groq Compound" },
+        { "id": "groq/compound-mini", "name": "Groq Compound Mini" },
+        { "id": "llama-3.3-70b-versatile", "name": "Llama 3.3 70B Versatile" },
+        { "id": "llama-3.1-8b-instant", "name": "Llama 3.1 8B Instant" },
+        {
+          "id": "meta-llama/llama-4-maverick-17b-128e-instruct",
+          "name": "Llama 4 Maverick 17B 128E Instruct"
+        },
+        {
+          "id": "meta-llama/llama-4-scout-17b-16e-instruct",
+          "name": "Llama 4 Scout 17B 16E Instruct"
+        },
+        { "id": "meta-llama/llama-guard-4-12b", "name": "Llama Guard 4 12B" },
+        {
+          "id": "meta-llama/llama-prompt-guard-2-22m",
+          "name": "Llama Prompt Guard 2 22M"
+        },
+        {
+          "id": "meta-llama/llama-prompt-guard-2-86m",
+          "name": "Llama Prompt Guard 2 86M"
+        },
+        { "id": "moonshotai/kimi-k2-instruct", "name": "Kimi K2 Instruct" },
+        {
+          "id": "moonshotai/kimi-k2-instruct-0905",
+          "name": "Kimi K2 Instruct 0905"
+        },
+        { "id": "openai/gpt-oss-120b", "name": "GPT OSS 120B" },
+        { "id": "openai/gpt-oss-20b", "name": "GPT OSS 20B" },
+        { "id": "openai/gpt-oss-safeguard-20b", "name": "GPT OSS Safeguard 20B" },
+        { "id": "qwen/qwen3-32b", "name": "Qwen3 32B" },
+        { "id": "gemma2-9b-it", "name": "Gemma 2 9B IT" },
+        { "id": "mixtral-8x7b-32768", "name": "Mixtral 8x7B" },
+        { "id": "deepseek-r1-distill-llama-70b", "name": "DeepSeek R1 Distill Llama 70B" }
+      ],
+      "default_model": "llama-3.3-70b-versatile"
+    }
+  ],
+  "default_provider": "OpenRouter"
+}
