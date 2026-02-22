@@ -17,9 +17,11 @@ You manage providers and model lists from `providers.json`, then use it to handl
 The easiest way. No python management, no hassle:
 
 ```bash
-brew tap selcuksarikoz/open-dev
+brew tap selcuksarikoz/opendev
 brew install opendev
 ```
+
+If your tap repo name is different (for example `homebrew-ssrok`), use that tap path instead.
 
 ### From Source
 
@@ -35,6 +37,37 @@ If you want to run it in your dev environment:
    uv run opendev
    ```
 
+3. Install command globally (so you can run `opendev` directly):
+   ```bash
+   uv tool install .
+   ```
+
+### Standalone Binary Install (Linux/macOS)
+
+Build:
+```bash
+uv tool run pyinstaller --onefile --name opendev app/__main__.py
+```
+
+Install to PATH:
+```bash
+install -m 755 dist/opendev ~/.local/bin/opendev
+```
+
+Or system-wide:
+```bash
+sudo install -m 755 dist/opendev /usr/local/bin/opendev
+```
+
+### Windows
+
+Build:
+```powershell
+uv tool run pyinstaller --onefile --name opendev app/__main__.py
+```
+
+Add `dist\` to PATH or move `dist\opendev.exe` to a directory already in PATH.
+
 ### Creating Standalone Executables
 
 If you want to build a single binary for your specific OS (macOS, Linux, or Windows):
@@ -47,7 +80,37 @@ If you want to build a single binary for your specific OS (macOS, Linux, or Wind
    ```bash
    pyinstaller --onefile --name opendev app/__main__.py
    ```
-   The executable will be generated in the `dist/` folder. Note that you must build on the target OS (e.g., build on Windows to get a `.exe`).
+   The executable will be generated in the `dist/` folder. Build on each target OS for native binaries.
+
+## Release Workflow
+
+Use the release script:
+
+```bash
+./scripts/build.sh --patch
+```
+
+Supported version bumps:
+- `--patch`
+- `--minor`
+- `--major`
+
+The script will:
+1. Bump version in `pyproject.toml`
+2. Build binary with PyInstaller
+3. Package macOS archive (`opendev-macos-arm64.tar.gz` or `opendev-macos-x86_64.tar.gz`)
+4. Generate SHA256
+5. Update local Homebrew tap formula commit (`homebrew-opendev`)
+6. Create release commit
+7. Create annotated git tag
+
+It does **not** push. You push manually.
+
+Then publish release asset (after pushing tag):
+
+```bash
+gh release create vX.Y.Z artifacts/vX.Y.Z/opendev-macos-<arch>.tar.gz --title "vX.Y.Z" --notes "Release vX.Y.Z"
+```
 
 ## How to use
 
