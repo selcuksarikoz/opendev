@@ -166,6 +166,7 @@ if [[ -n "${MAC_ARCH}" ]]; then
   fi
   FORMULA_DIR="${TAP_DIR}/Formula"
   FORMULA_PATH="${FORMULA_DIR}/opendev.rb"
+  FORMULA_REPO_PATH="Formula/opendev.rb"
   LOCAL_FORMULA_DIR="${ROOT_DIR}/Formula"
   LOCAL_FORMULA_PATH="${LOCAL_FORMULA_DIR}/opendev.rb"
   mkdir -p "${FORMULA_DIR}"
@@ -205,8 +206,8 @@ RUBY
   printf "%s\n" "${FORMULA_CONTENT}" > "${FORMULA_PATH}"
   printf "%s\n" "${FORMULA_CONTENT}" > "${LOCAL_FORMULA_PATH}"
   pushd "${TAP_DIR}" >/dev/null
-  if ! git diff --quiet -- "${FORMULA_PATH}"; then
-    git add "${FORMULA_PATH}"
+  if ! git diff --quiet -- "${FORMULA_REPO_PATH}"; then
+    git add "${FORMULA_REPO_PATH}"
     git commit -m "opendev ${NEW_VERSION}"
     echo "Tap formula updated and committed at: ${TAP_DIR}"
   else
