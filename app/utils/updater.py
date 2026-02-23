@@ -7,6 +7,9 @@ from typing import Any
 
 
 FORMULA_NAME = "opendev"
+TAP_NAME = "selcuksarikoz/opendev"
+TAP_URL = "https://github.com/selcuksarikoz/opendev"
+QUALIFIED_FORMULA = f"{TAP_NAME}/{FORMULA_NAME}"
 
 
 def _has_brew() -> bool:
@@ -34,6 +37,8 @@ async def check_update_available(formula: str = FORMULA_NAME) -> dict[str, Any]:
 
     proc = await asyncio.to_thread(_run_brew, ["outdated", "--json=v2", formula])
     if proc.returncode != 0:
+        proc = await asyncio.to_thread(_run_brew, ["outdated", "--json=v2", QUALIFIED_FORMULA])
+    if proc.returncode != 0:
         return {"ok": False, "reason": "brew_outdated_failed", "stderr": proc.stderr.strip()}
 
     try:
@@ -59,8 +64,12 @@ async def install_or_upgrade(formula: str = FORMULA_NAME) -> dict[str, Any]:
     if not _has_brew():
         return {"ok": False, "reason": "brew_not_found"}
 
+    tap_proc = await asyncio.to_thread(_run_brew, ["tap", TAP_NAME, TAP_URL])
+    if tap_proc.returncode != 0:
+        return {"ok": False, "reason": "brew_tap_failed", "stderr": tap_proc.stderr.strip()}
+
     list_proc = await asyncio.to_thread(_run_brew, ["list", "--formula", formula])
-    cmd = ["upgrade", formula] if list_proc.returncode == 0 else ["install", formula]
+    cmd = ["upgrade", QUALIFIED_FORMULA] if list_proc.returncode == 0 else ["install", QUALIFIED_FORMULA]
 
     proc = await asyncio.to_thread(_run_brew, cmd)
     return {

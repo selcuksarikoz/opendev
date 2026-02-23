@@ -9,13 +9,11 @@ What it does:
 1. Bumps version in pyproject.toml
 2. Builds standalone binary with PyInstaller
 3. Creates release commit and git tag
-4. Packages macOS artifact for Homebrew tap
-5. Updates local tap repo formula commit (no push)
+4. Packages macOS artifacts and updates Formula/opendev.rb
 6. Pushes commit/tag and creates GitHub release with assets
 
 Notes:
 - Run from a clean git working tree.
-- Homebrew tap update is performed locally in ../homebrew-opendev (or TAP_DIR env).
 USAGE
 }
 
@@ -167,19 +165,8 @@ if [[ -n "${MAC_ARCH}" ]]; then
     printf "%s  %s\n" "${X86_64_SHA}" "opendev-macos-x86_64.tar.gz"
   } > "${ARTIFACT_DIR}/sha256.txt"
 
-  # Update Homebrew tap formula locally (commit, no push)
-  TAP_REPO_URL="${TAP_REPO_URL:-https://github.com/selcuksarikoz/opendev.git}"
-  TAP_DIR="${TAP_DIR:-../homebrew-opendev}"
-  if [[ ! -d "${TAP_DIR}/.git" ]]; then
-    git clone "${TAP_REPO_URL}" "${TAP_DIR}"
-  fi
-  FORMULA_DIR="${TAP_DIR}/Formula"
-  FORMULA_PATH="${FORMULA_DIR}/opendev.rb"
-  FORMULA_REPO_PATH="Formula/opendev.rb"
-  LOCAL_FORMULA_DIR="${ROOT_DIR}/Formula"
-  LOCAL_FORMULA_PATH="${LOCAL_FORMULA_DIR}/opendev.rb"
-  mkdir -p "${FORMULA_DIR}"
-  mkdir -p "${LOCAL_FORMULA_DIR}"
+  FORMULA_PATH="${ROOT_DIR}/Formula/opendev.rb"
+  mkdir -p "$(dirname "${FORMULA_PATH}")"
   ARM64_URL="https://github.com/selcuksarikoz/opendev/releases/download/v${NEW_VERSION}/opendev-macos-arm64.tar.gz"
   X86_64_URL="https://github.com/selcuksarikoz/opendev/releases/download/v${NEW_VERSION}/opendev-macos-x86_64.tar.gz"
   FORMULA_CONTENT="$(cat <<RUBY
@@ -213,19 +200,9 @@ end
 RUBY
 )"
   printf "%s\n" "${FORMULA_CONTENT}" > "${FORMULA_PATH}"
-  printf "%s\n" "${FORMULA_CONTENT}" > "${LOCAL_FORMULA_PATH}"
-  pushd "${TAP_DIR}" >/dev/null
-  if ! git diff --quiet -- "${FORMULA_REPO_PATH}"; then
-    git add "${FORMULA_REPO_PATH}"
-    git commit -m "opendev ${NEW_VERSION}"
-    echo "Tap formula updated and committed at: ${TAP_DIR}"
-  else
-    echo "No tap formula changes detected."
-  fi
-  popd >/dev/null
 fi
 
-git add pyproject.toml
+git add pyproject.toml Formula/opendev.rb
 git commit -m "release: v${NEW_VERSION}"
 git tag -a "v${NEW_VERSION}" -m "Release v${NEW_VERSION}"
 
@@ -237,7 +214,6 @@ if [[ -n "${MAC_ARCH}" ]]; then
   echo "macOS archive: ${ARTIFACT_DIR}/opendev-macos-${MAC_ARCH}.tar.gz"
   echo "SHA256 arm64: ${ARM64_SHA}"
   echo "SHA256 x86_64: ${X86_64_SHA}"
-  echo "Tap repo: ${TAP_DIR}"
 fi
 
 echo "Pushing commit and tag to origin..."

@@ -21,8 +21,8 @@ So I built this CLI to offload chore tasks to free models.
 ### Homebrew (recommended)
 
 ```bash
-brew tap selcuksarikoz/opendev
-brew install opendev
+brew tap selcuksarikoz/opendev https://github.com/selcuksarikoz/opendev
+brew install selcuksarikoz/opendev/opendev
 ```
 
 ### From source
@@ -108,7 +108,6 @@ Supported bumps:
 2. Build macOS binaries for both `arm64` and `x86_64`
 3. Create release archives and SHA256 file
 4. Update `Formula/opendev.rb` in this repo
-5. Update local tap repo formula commit (`homebrew-opendev` by default)
 6. Create release commit and annotated tag
 7. Push commit/tag to `origin`
 8. Create GitHub release and upload assets from `artifacts/`
