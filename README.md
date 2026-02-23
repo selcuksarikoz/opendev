@@ -53,6 +53,13 @@ On Apple Silicon, if you need an `x86_64` build, install Rosetta first:
 softwareupdate --install-rosetta --agree-to-license
 ```
 
+For dual-arch release builds on Apple Silicon, `scripts/build.sh` also needs an `x86_64` Python 3.11+.
+If it is not in `/usr/local/bin/python3.12` (or `/usr/local/bin/python3.11`), set it explicitly:
+
+```bash
+X86_PYTHON=/path/to/x86_64/python3.12 ./scripts/build.sh --patch
+```
+
 ## Providers and config
 
 - Providers file: `~/.opendev/providers.json`
@@ -122,7 +129,7 @@ It rewrites `artifacts/` on each run (cleans old files first).
 
 For macOS dual-arch release builds:
 - `arm64` build runs natively.
-- `x86_64` build runs under Rosetta on Apple Silicon.
+- `x86_64` build runs under Rosetta on Apple Silicon with an `x86_64` Python 3.11+.
 - If Rosetta is missing, `scripts/build.sh` exits with an install hint.
 
 ## Notes

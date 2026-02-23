@@ -107,14 +107,60 @@ fi
 
 rm -rf build dist
 
-run_pyinstaller() {
+BUILD_PYTHON_VERSION="${BUILD_PYTHON_VERSION:-3.12}"
+BUILD_ENV_ROOT="build/venvs"
+ARM64_ENV_DIR="${BUILD_ENV_ROOT}/arm64"
+X86_ENV_DIR="${BUILD_ENV_ROOT}/x86_64"
+
+create_uv_build_env() {
+  local env_dir="$1"
+  rm -rf "${env_dir}"
   env -u VIRTUAL_ENV -u PYTHONPATH -u PYTHONHOME \
-    uv run --with pyinstaller pyinstaller "$@"
+    uv venv --python "${BUILD_PYTHON_VERSION}" "${env_dir}"
+  env -u VIRTUAL_ENV -u PYTHONPATH -u PYTHONHOME \
+    uv pip install --python "${env_dir}/bin/python" -e . pyinstaller
+}
+
+find_x86_python() {
+  local candidates=()
+  if [[ -n "${X86_PYTHON:-}" ]]; then
+    candidates+=("${X86_PYTHON}")
+  fi
+  candidates+=("/usr/local/bin/python3.12" "/usr/local/bin/python3.11" "/usr/local/bin/python3")
+
+  for candidate in "${candidates[@]}"; do
+    if [[ ! -x "${candidate}" ]]; then
+      continue
+    fi
+    if /usr/bin/arch -x86_64 "${candidate}" -c 'import platform,sys; raise SystemExit(0 if (platform.machine()=="x86_64" and sys.version_info >= (3,11)) else 1)' >/dev/null 2>&1; then
+      printf "%s\n" "${candidate}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+create_x86_rosetta_env() {
+  local env_dir="$1"
+  local x86_python_bin="$2"
+  rm -rf "${env_dir}"
+  /usr/bin/arch -x86_64 "${x86_python_bin}" -m venv "${env_dir}"
+  /usr/bin/arch -x86_64 "${env_dir}/bin/python" -m pip install --upgrade pip
+  /usr/bin/arch -x86_64 "${env_dir}/bin/python" -m pip install -e . pyinstaller
+}
+
+run_pyinstaller() {
+  local env_dir="$1"
+  shift
+  "${env_dir}/bin/python" -m PyInstaller "$@"
 }
 
 if [[ "${OS_NAME}" == "darwin" ]]; then
+  echo "Preparing isolated arm64 build environment (Python ${BUILD_PYTHON_VERSION})..."
+  create_uv_build_env "${ARM64_ENV_DIR}"
+
   echo "Building macOS arm64 binary..."
-  run_pyinstaller \
+  run_pyinstaller "${ARM64_ENV_DIR}" \
     --onefile \
     --name opendev \
     --target-arch arm64 \
@@ -130,8 +176,15 @@ if [[ "${OS_NAME}" == "darwin" ]]; then
       echo "Install Rosetta: softwareupdate --install-rosetta"
       exit 1
     fi
-    /usr/bin/arch -x86_64 env -u VIRTUAL_ENV -u PYTHONPATH -u PYTHONHOME \
-      uv run --with pyinstaller pyinstaller \
+    X86_PYTHON_BIN="$(find_x86_python || true)"
+    if [[ -z "${X86_PYTHON_BIN}" ]]; then
+      echo "Error: x86_64 Python >=3.11 not found."
+      echo "Install one under Rosetta (recommended: /usr/local/bin/python3.12) or set X86_PYTHON."
+      exit 1
+    fi
+    echo "Preparing isolated x86_64 build environment under Rosetta (${X86_PYTHON_BIN})..."
+    create_x86_rosetta_env "${X86_ENV_DIR}" "${X86_PYTHON_BIN}"
+    /usr/bin/arch -x86_64 "${X86_ENV_DIR}/bin/python" -m PyInstaller \
       --onefile \
       --name opendev \
       --target-arch x86_64 \
@@ -140,7 +193,9 @@ if [[ "${OS_NAME}" == "darwin" ]]; then
       --specpath build/spec/x86_64 \
       run.py
   else
-    run_pyinstaller \
+    echo "Preparing isolated x86_64 build environment (Python ${BUILD_PYTHON_VERSION})..."
+    create_uv_build_env "${X86_ENV_DIR}"
+    run_pyinstaller "${X86_ENV_DIR}" \
       --onefile \
       --name opendev \
       --target-arch x86_64 \
@@ -152,7 +207,9 @@ if [[ "${OS_NAME}" == "darwin" ]]; then
 
   cp "dist/${MAC_ARCH}/opendev" "${ARTIFACT_DIR}/opendev-${OS_NAME}-${ARCH_NAME}"
 else
-  run_pyinstaller --onefile --name opendev run.py
+  echo "Preparing isolated build environment (Python ${BUILD_PYTHON_VERSION})..."
+  create_uv_build_env "${ARM64_ENV_DIR}"
+  run_pyinstaller "${ARM64_ENV_DIR}" --onefile --name opendev run.py
   if [[ -f "dist/opendev" ]]; then
     cp "dist/opendev" "${ARTIFACT_DIR}/opendev-${OS_NAME}-${ARCH_NAME}"
   elif [[ -f "dist/opendev.exe" ]]; then
