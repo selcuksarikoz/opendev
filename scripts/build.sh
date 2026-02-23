@@ -111,6 +111,10 @@ BUILD_PYTHON_VERSION="${BUILD_PYTHON_VERSION:-3.12}"
 BUILD_ENV_ROOT="build/venvs"
 ARM64_ENV_DIR="${BUILD_ENV_ROOT}/arm64"
 X86_ENV_DIR="${BUILD_ENV_ROOT}/x86_64"
+PYI_COMMON_ARGS=(
+  --collect-all rich
+  --add-data "app/ui/style.tcss:app/ui"
+)
 
 create_uv_build_env() {
   local env_dir="$1"
@@ -161,6 +165,7 @@ if [[ "${OS_NAME}" == "darwin" ]]; then
 
   echo "Building macOS arm64 binary..."
   run_pyinstaller "${ARM64_ENV_DIR}" \
+    "${PYI_COMMON_ARGS[@]}" \
     --onefile \
     --name opendev \
     --target-arch arm64 \
@@ -185,6 +190,7 @@ if [[ "${OS_NAME}" == "darwin" ]]; then
     echo "Preparing isolated x86_64 build environment under Rosetta (${X86_PYTHON_BIN})..."
     create_x86_rosetta_env "${X86_ENV_DIR}" "${X86_PYTHON_BIN}"
     /usr/bin/arch -x86_64 "${X86_ENV_DIR}/bin/python" -m PyInstaller \
+      "${PYI_COMMON_ARGS[@]}" \
       --onefile \
       --name opendev \
       --target-arch x86_64 \
@@ -196,6 +202,7 @@ if [[ "${OS_NAME}" == "darwin" ]]; then
     echo "Preparing isolated x86_64 build environment (Python ${BUILD_PYTHON_VERSION})..."
     create_uv_build_env "${X86_ENV_DIR}"
     run_pyinstaller "${X86_ENV_DIR}" \
+      "${PYI_COMMON_ARGS[@]}" \
       --onefile \
       --name opendev \
       --target-arch x86_64 \
@@ -209,7 +216,7 @@ if [[ "${OS_NAME}" == "darwin" ]]; then
 else
   echo "Preparing isolated build environment (Python ${BUILD_PYTHON_VERSION})..."
   create_uv_build_env "${ARM64_ENV_DIR}"
-  run_pyinstaller "${ARM64_ENV_DIR}" --onefile --name opendev run.py
+  run_pyinstaller "${ARM64_ENV_DIR}" "${PYI_COMMON_ARGS[@]}" --onefile --name opendev run.py
   if [[ -f "dist/opendev" ]]; then
     cp "dist/opendev" "${ARTIFACT_DIR}/opendev-${OS_NAME}-${ARCH_NAME}"
   elif [[ -f "dist/opendev.exe" ]]; then

@@ -42,7 +42,12 @@ uv tool install .
 ### Single-file binary (manual)
 
 ```bash
-uv run --with pyinstaller pyinstaller --onefile --name opendev run.py
+uv run --with pyinstaller pyinstaller \
+  --collect-all rich \
+  --add-data "app/ui/style.tcss:app/ui" \
+  --onefile \
+  --name opendev \
+  run.py
 ```
 
 Move binary to your PATH (`~/.local/bin`, `/usr/local/bin`, etc.).
