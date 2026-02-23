@@ -159,7 +159,7 @@ if [[ -n "${MAC_ARCH}" ]]; then
   } > "${ARTIFACT_DIR}/sha256.txt"
 
   # Update Homebrew tap formula locally (commit, no push)
-  TAP_REPO_URL="${TAP_REPO_URL:-https://github.com/selcuksarikoz/homebrew-opendev.git}"
+  TAP_REPO_URL="${TAP_REPO_URL:-https://github.com/selcuksarikoz/opendev.git}"
   TAP_DIR="${TAP_DIR:-../homebrew-opendev}"
   if [[ ! -d "${TAP_DIR}/.git" ]]; then
     git clone "${TAP_REPO_URL}" "${TAP_DIR}"
