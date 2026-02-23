@@ -110,14 +110,10 @@ Supported bumps:
 4. Update `Formula/opendev.rb` in this repo
 5. Update local tap repo formula commit (`homebrew-opendev` by default)
 6. Create release commit and annotated tag
+7. Push commit/tag to `origin`
+8. Create GitHub release and upload assets from `artifacts/`
 
-It does not push.
-
-After pushing tag, publish GitHub release assets:
-
-```bash
-gh release create vX.Y.Z artifacts/vX.Y.Z/opendev-macos-arm64.tar.gz artifacts/vX.Y.Z/opendev-macos-x86_64.tar.gz --title "vX.Y.Z" --notes "Release vX.Y.Z"
-```
+It rewrites `artifacts/` on each run (cleans old files first).
 
 ## Notes
 

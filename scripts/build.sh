@@ -11,9 +11,9 @@ What it does:
 3. Creates release commit and git tag
 4. Packages macOS artifact for Homebrew tap
 5. Updates local tap repo formula commit (no push)
+6. Pushes commit/tag and creates GitHub release with assets
 
 Notes:
-- Push is NOT performed.
 - Run from a clean git working tree.
 - Homebrew tap update is performed locally in ../homebrew-opendev (or TAP_DIR env).
 USAGE
@@ -42,6 +42,14 @@ fi
 
 if ! command -v uv >/dev/null 2>&1; then
   echo "Error: uv is required."
+  exit 1
+fi
+if ! command -v gh >/dev/null 2>&1; then
+  echo "Error: gh CLI is required."
+  exit 1
+fi
+if ! gh auth status >/dev/null 2>&1; then
+  echo "Error: gh is not authenticated. Run: gh auth login"
   exit 1
 fi
 
@@ -87,7 +95,8 @@ echo "Version bumped to: ${NEW_VERSION}"
 
 OS_NAME="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH_NAME="$(uname -m)"
-ARTIFACT_DIR="artifacts/v${NEW_VERSION}"
+ARTIFACT_DIR="artifacts"
+rm -rf "${ARTIFACT_DIR}"
 mkdir -p "${ARTIFACT_DIR}"
 
 MAC_ARCH=""
@@ -230,11 +239,21 @@ if [[ -n "${MAC_ARCH}" ]]; then
   echo "SHA256 x86_64: ${X86_64_SHA}"
   echo "Tap repo: ${TAP_DIR}"
 fi
-echo "Push manually when ready:"
-echo "  git push origin HEAD"
-echo "  git push origin v${NEW_VERSION}"
+
+echo "Pushing commit and tag to origin..."
+git push origin HEAD
+git push origin "v${NEW_VERSION}"
+
 if [[ -n "${MAC_ARCH}" ]]; then
-  echo
-  echo "After pushing tag, create GitHub release and upload both tar.gz files:"
-  echo "  gh release create v${NEW_VERSION} ${ARTIFACT_DIR}/opendev-macos-arm64.tar.gz ${ARTIFACT_DIR}/opendev-macos-x86_64.tar.gz --title \"v${NEW_VERSION}\" --notes \"Release v${NEW_VERSION}\""
+  echo "Creating GitHub release v${NEW_VERSION}..."
+  RELEASE_NOTES="Release v${NEW_VERSION}"
+  gh release create \
+    "v${NEW_VERSION}" \
+    "${ARTIFACT_DIR}/opendev-macos-arm64.tar.gz" \
+    "${ARTIFACT_DIR}/opendev-macos-x86_64.tar.gz" \
+    "${ARTIFACT_DIR}/sha256.txt" \
+    --title "v${NEW_VERSION}" \
+    --notes "${RELEASE_NOTES}"
 fi
+
+echo "GitHub release published: v${NEW_VERSION}"
