@@ -42,7 +42,7 @@ uv tool install .
 ### Single-file binary (manual)
 
 ```bash
-uv tool run pyinstaller --onefile --name opendev app/__main__.py
+uv run --with pyinstaller pyinstaller --onefile --name opendev run.py
 ```
 
 Move binary to your PATH (`~/.local/bin`, `/usr/local/bin`, etc.).

@@ -109,28 +109,28 @@ rm -rf build dist
 
 if [[ "${OS_NAME}" == "darwin" ]]; then
   echo "Building macOS arm64 binary..."
-  uv tool run pyinstaller \
+  uv run --with pyinstaller pyinstaller \
     --onefile \
     --name opendev \
     --target-arch arm64 \
     --distpath dist/arm64 \
     --workpath build/arm64 \
     --specpath build/spec/arm64 \
-    app/__main__.py
+    run.py
 
   echo "Building macOS x86_64 binary..."
-  uv tool run pyinstaller \
+  uv run --with pyinstaller pyinstaller \
     --onefile \
     --name opendev \
     --target-arch x86_64 \
     --distpath dist/x86_64 \
     --workpath build/x86_64 \
     --specpath build/spec/x86_64 \
-    app/__main__.py
+    run.py
 
   cp "dist/${MAC_ARCH}/opendev" "${ARTIFACT_DIR}/opendev-${OS_NAME}-${ARCH_NAME}"
 else
-  uv tool run pyinstaller --onefile --name opendev app/__main__.py
+  uv run --with pyinstaller pyinstaller --onefile --name opendev run.py
   if [[ -f "dist/opendev" ]]; then
     cp "dist/opendev" "${ARTIFACT_DIR}/opendev-${OS_NAME}-${ARCH_NAME}"
   elif [[ -f "dist/opendev.exe" ]]; then
