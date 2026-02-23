@@ -1,15 +1,15 @@
 class Opendev < Formula
   desc "Terminal-first AI coding assistant focused on free/community models"
   homepage "https://github.com/selcuksarikoz/opendev"
-  version "0.1.3"
+  version "0.1.5"
 
   if OS.mac?
     if Hardware::CPU.arm?
-      url "https://github.com/selcuksarikoz/opendev/releases/download/v0.1.3/opendev-macos-arm64.tar.gz"
-      sha256 "d27d47d35412a5d16b92bc2d75f259640c52482f50a2d4562f6e67b1e952146f"
+      url "https://github.com/selcuksarikoz/opendev/releases/download/v0.1.5/opendev-macos-arm64.tar.gz"
+      sha256 "2f94b398eb968bbd0a52ecce28c6ab4049e788345bffc352b3f80c0824ba7bab"
     elsif Hardware::CPU.intel?
-      url "https://github.com/selcuksarikoz/opendev/releases/download/v0.1.3/opendev-macos-x86_64.tar.gz"
-      sha256 "9b8b28eb7c76be97b8a245d8c0bc7931dd9c8361e70f71c859d2fa8acf5002bc"
+      url "https://github.com/selcuksarikoz/opendev/releases/download/v0.1.5/opendev-macos-x86_64.tar.gz"
+      sha256 "897a5f53a04e030a227ffc4cb804a02b814033992cda612781ce1633ffcddeab"
     else
       odie "Unsupported macOS CPU."
     end
