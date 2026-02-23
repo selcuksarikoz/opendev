@@ -113,7 +113,7 @@ ARM64_ENV_DIR="${BUILD_ENV_ROOT}/arm64"
 X86_ENV_DIR="${BUILD_ENV_ROOT}/x86_64"
 PYI_COMMON_ARGS=(
   --collect-all rich
-  --add-data "app/ui/style.tcss:app/ui"
+  --add-data "${ROOT_DIR}/app/ui/style.tcss:app/ui"
 )
 
 create_uv_build_env() {
