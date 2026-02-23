@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional
 from enum import Enum
+from app.core.runtime_config import DEFAULT_AGENT_NAME
 
 
 class Mode(str, Enum):
@@ -54,7 +55,7 @@ class Session(BaseModel):
     mode: Mode = Mode.BUILD
     provider_name: str = ""
     model: str = ""
-    agent_name: str = "coder"
+    agent_name: str = DEFAULT_AGENT_NAME
 
 
 class AppConfig(BaseModel):

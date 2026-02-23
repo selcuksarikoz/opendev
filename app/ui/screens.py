@@ -11,6 +11,12 @@ from textual import on
 
 from app.ui.widgets import ChatArea, CustomInput, TipsWidget, AutocompleteDropdown
 from app.utils import get_project_version
+from app.core.runtime_config import (
+    AI_DEFAULT_MAX_TOKENS,
+    AI_DEFAULT_TEMPERATURE,
+    AI_DEFAULT_TOP_P,
+    PLAN_MODE,
+)
 
 ASCII_LOGO = r"""                             _            
                             | |           
@@ -36,10 +42,12 @@ class BaseScreen(Screen):
             app = self.app
             path = os.getcwd().replace(os.path.expanduser("~"), "~")
             status_center = f"{app.get_current_mode()} {app.get_status_text()}"
+            right = f"{app.active_agent} | {get_project_version()}"
 
             self.query_one("#status-left", Label).update(f"{path} |")
             self.query_one("#status-center", Label).update(f"{status_center} |")
-        except:
+            self.query_one("#status-right", Label).update(right)
+        except Exception:
             pass
 
 
@@ -64,6 +72,10 @@ class WelcomeScreen(BaseScreen):
     def on_mount(self) -> None:
         self.query_one("#initial-input").focus()
         self.update_status()
+        self.update_mode_indicator(self.app.get_current_mode())
+
+    def update_mode_indicator(self, mode: str) -> None:
+        self.update_status()
 
 
 class ChatScreen(BaseScreen):
@@ -87,13 +99,34 @@ class ChatScreen(BaseScreen):
                     pass
                 with Vertical(id="input-wrapper"):
                     yield CustomInput(placeholder="Send a message...", id="chat-input")
-
+                with Horizontal(id="mode-hint-bar"):
+                    yield Label("TAB", id="mode-tab-chip", classes="hint-chip")
+                    yield Label("Build", id="mode-build", classes="mode-chip")
+                    yield Label("Plan", id="mode-plan", classes="mode-chip")
+                    yield Label("", id="mode-agent-right", classes="mode-agent-right")
                 with Horizontal(id="chat-meta"):
                     yield Label("", id="chat-status")
         yield AutocompleteDropdown(id="autocomplete-list")
 
     def on_mount(self) -> None:
         self.query_one("#chat-input").focus()
+        self.update_mode_indicator(self.app.get_current_mode())
+
+    def update_mode_indicator(self, mode: str) -> None:
+        try:
+            build = self.query_one("#mode-build", Label)
+            plan = self.query_one("#mode-plan", Label)
+            agent = self.query_one("#mode-agent-right", Label)
+            build.remove_class("mode-chip-active")
+            plan.remove_class("mode-chip-active")
+            if mode == PLAN_MODE:
+                plan.add_class("mode-chip-active")
+            else:
+                build.add_class("mode-chip-active")
+            agent.update(f"Agent: {self.app.active_agent}")
+        except Exception:
+            pass
+        self.update_status()
 
     def add_message(
         self, role: str, content: str, is_first_chunk: bool = False
@@ -101,13 +134,27 @@ class ChatScreen(BaseScreen):
         area = self.query_one("#message-area", ChatArea)
         area.add_message(role, content, is_first_chunk=is_first_chunk)
 
-    def add_tool_call(self, tool_name: str, arguments: dict) -> None:
+    def add_tool_call(self, tool_call_id: str, tool_name: str, arguments: dict) -> None:
         area = self.query_one("#message-area", ChatArea)
-        area.add_tool_call(tool_name, arguments)
+        area.add_tool_call(tool_call_id, tool_name, arguments)
+
+    def add_tool_result(
+        self,
+        tool_call_id: str,
+        tool_name: str,
+        result: str,
+        duration_ms: int | None = None,
+    ) -> None:
+        area = self.query_one("#message-area", ChatArea)
+        area.add_tool_result(tool_call_id, tool_name, result, duration_ms=duration_ms)
 
     def update_last_assistant_message(self, content: str) -> None:
         area = self.query_one("#message-area", ChatArea)
         area.update_last_assistant_message(content)
+
+    def update_plan_message(self, content: str) -> None:
+        area = self.query_one("#message-area", ChatArea)
+        area.update_plan_message(content)
 
     def update_status_text(self, text: str) -> None:
         try:
@@ -143,11 +190,7 @@ class ChatScreen(BaseScreen):
             pass
 
     def action_cancel_or_back(self) -> None:
-        if self.app.is_streaming:
-            self.app.is_streaming = False
-            self._show_cancelled()
-        else:
-            self.app.pop_screen()
+        self.app.action_escape_request_only()
 
     def _show_cancelled(self):
         try:
@@ -156,7 +199,7 @@ class ChatScreen(BaseScreen):
             area = self.query_one("#message-area", ChatArea)
             for child in area.children:
                 if isinstance(child, LoadingMessage):
-                    child.update_message("❌ Request cancelled")
+                    child.update_message("Request cancelled", is_error=True)
         except:
             pass
 
@@ -186,17 +229,23 @@ class SettingsScreen(ModalScreen[dict]):
             yield Label("⚙️ AI Settings", id="settings-title")
 
             yield Input(
-                value=f"Max Tokens: {self.settings.get('max_tokens', '4096')}",
+                value=(
+                    f"Max Tokens: "
+                    f"{self.settings.get('max_tokens', str(AI_DEFAULT_MAX_TOKENS))}"
+                ),
                 id="max-tokens",
             )
 
             yield Input(
-                value=f"Temperature: {self.settings.get('temperature', '0.5')}",
+                value=(
+                    f"Temperature: "
+                    f"{self.settings.get('temperature', str(AI_DEFAULT_TEMPERATURE))}"
+                ),
                 id="temperature",
             )
 
             yield Input(
-                value=f"Top P: {self.settings.get('top_p', '1.0')}",
+                value=f"Top P: {self.settings.get('top_p', str(AI_DEFAULT_TOP_P))}",
                 id="top-p",
             )
 
@@ -261,12 +310,13 @@ class SettingsScreen(ModalScreen[dict]):
             "max_tokens": extract_value(
                 self.query_one("#max-tokens").value, "Max Tokens"
             )
-            or "4096",
+            or str(AI_DEFAULT_MAX_TOKENS),
             "temperature": extract_value(
                 self.query_one("#temperature").value, "Temperature"
             )
-            or "0.5",
-            "top_p": extract_value(self.query_one("#top-p").value, "Top P") or "1.0",
+            or str(AI_DEFAULT_TEMPERATURE),
+            "top_p": extract_value(self.query_one("#top-p").value, "Top P")
+            or str(AI_DEFAULT_TOP_P),
         }
         self.dismiss(settings)
 
@@ -302,6 +352,16 @@ class PlanConfirmModal(ModalScreen[bool]):
 
     def on_mount(self) -> None:
         self.query_one("#execute-btn").focus()
+
+    def on_key(self, event) -> None:
+        if event.key in {"enter", "space", "y"}:
+            event.prevent_default()
+            self.dismiss(True)
+            return
+        if event.key in {"escape", "n"}:
+            event.prevent_default()
+            self.dismiss(False)
+            return
 
     def action_cancel(self) -> None:
         self.dismiss(False)

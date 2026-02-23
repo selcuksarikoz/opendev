@@ -3,7 +3,7 @@ import time
 from typing import Any, Optional
 
 from textual.app import App, ComposeResult
-from textual.widgets import Input
+from textual.widgets import Input, Label
 from textual.binding import Binding
 from textual import on, work
 
@@ -23,12 +23,21 @@ from app.ui.widgets import (
     SelectionModal,
     ApiKeyModal,
     ChatArea,
+    CustomInput,
 )
 from app.ui.screens import WelcomeScreen, ChatScreen
 from app.utils.logger import log_error
 from app.logic.ai_handler import AIHandler
 from app.logic.command_handler import CommandHandler
+from app.logic.turn_orchestrator import TurnOrchestrator
+from app.logic.mode_manager import ModeManager
 from app.utils.updater import check_update_available, install_or_upgrade
+from app.utils.file_search import search_files_for_query
+from app.core.runtime_config import (
+    DEFAULT_AGENT_NAME,
+    CONTEXT_LIMIT_TOKENS,
+    PLAN_MESSAGE_PREFIX,
+)
 
 
 class OpenDevApp(App):
@@ -38,6 +47,7 @@ class OpenDevApp(App):
     BINDINGS = [
         Binding("ctrl+c", "cancel_request",
                 "Cancel Request", show=True, priority=True),
+        Binding("escape", "escape_request_only", "Cancel Request", show=False, priority=True),
         Binding("ctrl+d", "quit", "Quit", show=True, priority=True),
         Binding("ctrl+shift+m", "cycle_mode", "Switch Mode", show=True),
     ]
@@ -55,12 +65,15 @@ class OpenDevApp(App):
         self.tool_manager = create_tool_manager()
         self.conversation_title = "New Chat"
         self.context_remaining = 100
-        self.modes = ["Build", "Plan"]
+        self.mode_manager = ModeManager(self)
+        self.modes = self.mode_manager.modes
         self.current_mode_index = 0
+        self.active_agent = DEFAULT_AGENT_NAME
         self.conversation_id = str(uuid.uuid4())
         self.is_new_conversation = True
         self.pending_user_queue: list[str] = []
         self.is_shutting_down = False
+        self.plan_tracker: Optional[dict[str, Any]] = None
 
         self.yolo_mode = yolo
         self.always_allow_session = False
@@ -68,15 +81,28 @@ class OpenDevApp(App):
         self.ai_settings = {}
         self.ai_handler = AIHandler(self)
         self.command_handler = CommandHandler(self)
+        self.turn_orchestrator = TurnOrchestrator(self)
+
+    def notify(self, *args, **kwargs):
+        kwargs.setdefault("timeout", 1.5)
+        return super().notify(*args, **kwargs)
 
     async def on_mount(self) -> None:
         self.ai_settings = await self.storage.get_all_settings()
+        self.mode_manager.load_from_settings(self.ai_settings)
+        try:
+            CustomInput._shared_history = await self.storage.get_recent_user_history()
+            CustomInput._history_index = -1
+        except Exception:
+            pass
         self.persistent_permissions = load_permissions()
         if self.current_provider_info:
-            self.http_service = HttpService()
+            self.http_service = HttpService(agent_name=self.active_agent)
             await self.http_service.initialize()
+            self.mode_manager.apply_to_http_service()
         self.push_screen(WelcomeScreen())
         self.check_updates_on_startup()
+        self.refresh_context_info()
 
     async def on_unmount(self) -> None:
         self.is_shutting_down = True
@@ -88,13 +114,67 @@ class OpenDevApp(App):
     async def switch_provider(self, provider_name: str, notify: bool = True):
         if self.http_service:
             await self.http_service.close()
-        self.http_service = HttpService(provider_name=provider_name)
+        self.http_service = HttpService(
+            provider_name=provider_name,
+            agent_name=self.active_agent,
+        )
         await self.http_service.initialize()
+        self.mode_manager.apply_to_http_service()
         self.current_provider_info = get_default_provider()
         if notify:
             self.notify(f"Provider switched to {provider_name}")
 
+    def set_active_agent(self, agent_name: str) -> None:
+        valid_agents = set(get_agent_names())
+        if agent_name not in valid_agents:
+            self.notify(f"Unknown agent: {agent_name}", severity="error")
+            return
+        self.active_agent = agent_name
+        if self.http_service:
+            self.http_service.set_agent(agent_name)
+        if hasattr(self.screen, "update_mode_indicator"):
+            try:
+                self.screen.update_mode_indicator(self.get_current_mode())
+            except Exception:
+                pass
+        self.notify(f"Switched agent to {agent_name}")
+
+    def apply_agent_handoff(
+        self,
+        to_agent: str,
+        task: str,
+        context: str = "",
+    ) -> tuple[bool, str]:
+        valid_agents = set(get_agent_names())
+        if to_agent not in valid_agents:
+            return False, f"Error: Unknown handoff target '{to_agent}'."
+        if not task.strip():
+            return False, "Error: Handoff task cannot be empty."
+
+        from_agent = self.active_agent
+        if to_agent == from_agent:
+            return False, "Error: Handoff target is already the active agent."
+
+        self.set_active_agent(to_agent)
+        handoff_msg = (
+            f"Agent handoff from '{from_agent}' to '{to_agent}'. "
+            f"Assigned task: {task.strip()}."
+        )
+        if context.strip():
+            handoff_msg += f" Context: {context.strip()}."
+
+        self.messages.append({"role": "system", "content": handoff_msg})
+        return True, handoff_msg
+
     def action_cancel_request(self) -> None:
+        if self.is_streaming:
+            self.is_streaming = False
+            self.notify("Request cancelled", severity="warning")
+            return
+
+        self.run_worker(self.command_handler._handle_new_chat(), exclusive=False)
+
+    def action_escape_request_only(self) -> None:
         if self.is_streaming:
             self.is_streaming = False
             self.notify("Request cancelled", severity="warning")
@@ -107,7 +187,20 @@ class OpenDevApp(App):
         return f"{p} • {m}"
 
     def get_current_mode(self) -> str:
-        return self.modes[self.current_mode_index]
+        return self.mode_manager.get_current_mode()
+
+    def action_cycle_mode(self) -> None:
+        mode = self.mode_manager.cycle()
+        if hasattr(self.screen, "update_mode_indicator"):
+            try:
+                self.screen.update_mode_indicator(mode)
+            except Exception:
+                pass
+        if hasattr(self.screen, "update_status"):
+            try:
+                self.screen.update_status()
+            except Exception:
+                pass
 
     async def ensure_api_key(self, provider_name: str) -> Optional[str]:
         api_key = await self.storage.get_api_key(provider_name)
@@ -183,7 +276,7 @@ class OpenDevApp(App):
         if self.pending_user_queue and not self.is_streaming:
             next_input = self.pending_user_queue.pop(0)
             self._refresh_queue_overlay()
-            await self._submit_user_message(next_input, skip_render=True)
+            await self._submit_user_message(next_input, skip_render=False)
         else:
             self._refresh_queue_overlay()
 
@@ -205,8 +298,48 @@ class OpenDevApp(App):
         if isinstance(self.screen, ChatScreen) and not skip_render:
             self.screen.add_message("user", user_input)
 
+        await self.turn_orchestrator.handle_user_turn(user_input)
+
+    def _start_ai_run(self, user_input: str) -> None:
         self.is_streaming = True
         self.run_ai(user_input)
+
+    def advance_plan_progress(self, step_count: int = 1) -> None:
+        tracker = self.plan_tracker
+        if not tracker or not tracker.get("active"):
+            return
+        items = tracker.get("items", [])
+        if not items:
+            return
+        tracker["completed"] = max(
+            0, min(int(tracker.get("completed", 0)) + max(1, step_count), len(items))
+        )
+        updated = (
+            f"{PLAN_MESSAGE_PREFIX}"
+            f"{TurnOrchestrator._format_plan_items(items, tracker['completed'])}"
+        )
+        msg_index = int(tracker.get("message_index", -1))
+        if 0 <= msg_index < len(self.messages):
+            self.messages[msg_index]["content"] = updated
+        if isinstance(self.screen, ChatScreen):
+            self.screen.update_plan_message(updated)
+
+    def finalize_plan_progress(self) -> None:
+        tracker = self.plan_tracker
+        if not tracker or not tracker.get("active"):
+            return
+        items = tracker.get("items", [])
+        tracker["completed"] = len(items)
+        updated = (
+            f"{PLAN_MESSAGE_PREFIX}"
+            f"{TurnOrchestrator._format_plan_items(items, len(items))}"
+        )
+        msg_index = int(tracker.get("message_index", -1))
+        if 0 <= msg_index < len(self.messages):
+            self.messages[msg_index]["content"] = updated
+        if isinstance(self.screen, ChatScreen):
+            self.screen.update_plan_message(updated)
+        tracker["active"] = False
 
     def _refresh_queue_overlay(self) -> None:
         try:
@@ -217,26 +350,16 @@ class OpenDevApp(App):
 
     async def handle_command(self, command: str) -> None:
         if command == "/model":
-            from app.logic.command_handler import CommandHandler
-
-            handler = CommandHandler(self)
-            await handler._start_model_selection()
+            await self.command_handler._start_model_selection()
             return
         elif command == "/settings":
-            from app.ui.screens import SettingsScreen
-
-            settings = await self.push_screen(SettingsScreen(self.ai_settings))
-            if settings:
-                for key, value in settings.items():
-                    await self.storage.save_setting(key, value)
-                self.ai_settings = settings
-                self.notify("Settings saved.")
+            await self.open_settings()
             return
         elif command.startswith("@"):
             from app.ui.widgets import SelectionModal
 
             query = command[1:]
-            files = self._search_files(query)
+            files = search_files_for_query(query=query, limit=20, include_git_branches=False)
             selected = await self.push_screen(SelectionModal("Select File", files))
             if selected:
                 self.messages.append(
@@ -251,50 +374,16 @@ class OpenDevApp(App):
 
         await self.command_handler.handle(command)
 
-    def _search_files(self, query: str = "") -> list[str]:
-        from pathlib import Path
+    async def open_settings(self) -> None:
+        from app.ui.screens import SettingsScreen
 
-        items = []
-        skip_dirs = {
-            ".git",
-            "node_modules",
-            "__pycache__",
-            ".venv",
-            "venv",
-            "dist",
-            "build",
-        }
-
-        try:
-            root = Path(".")
-            search_path = root
-            search_name = query.lower()
-
-            if "/" in query:
-                p_query = Path(query)
-                if query.endswith("/"):
-                    search_path = p_query
-                    search_name = ""
-                else:
-                    search_path = p_query.parent
-                    search_name = p_query.name.lower()
-
-            if search_path.exists() and search_path.is_dir():
-                for item in search_path.iterdir():
-                    if item.name in skip_dirs or item.name.startswith("."):
-                        continue
-                    if search_name and search_name not in item.name.lower():
-                        continue
-                    full_str = str(item)
-                    if full_str.startswith("./"):
-                        full_str = full_str[2:]
-                    items.append(full_str + ("/" if item.is_dir() else ""))
-                    if len(items) >= 20:
-                        break
-        except:
-            pass
-
-        return items
+        settings = await self.push_screen(SettingsScreen(self.ai_settings))
+        if settings:
+            for key, value in settings.items():
+                await self.storage.save_setting(key, value)
+            self.ai_settings = settings
+            self.mode_manager.load_from_settings(self.ai_settings)
+            self.notify("Settings saved.")
 
     @work(exclusive=True)
     async def compact_conversation(self) -> None:
@@ -315,18 +404,91 @@ class OpenDevApp(App):
                 self.screen.add_message("assistant", context_msg["content"])
         except Exception as e:
             self.notify(f"Compaction failed: {e}", severity="error")
+        finally:
+            self.refresh_context_info()
 
     async def clean_history(self) -> None:
-        keep_id = self.conversation_id if not self.is_new_conversation else None
         before = await self.storage.list_conversations()
         before_count = len(before)
+        await self.storage.delete_all_conversations()
 
-        await self.storage.delete_conversations_except(keep_id)
+        self.messages = []
+        self.pending_user_queue = []
+        self.is_new_conversation = True
+        self.conversation_id = str(uuid.uuid4())
+        self.conversation_title = "New Chat"
+        self.plan_tracker = None
 
-        after = await self.storage.list_conversations()
-        after_count = len(after)
-        deleted = before_count - after_count
-        self.notify(f"History cleaned. Deleted {deleted} message(s).")
+        if isinstance(self.screen, ChatScreen):
+            self.screen.action_clear_chat()
+            self.screen.query_one("#conv-title").update("# New Chat")
+            self.screen.query_one("#context-info").update("Context: 100%")
+            self.screen.update_queue_overlay([])
+        self.refresh_context_info()
+
+        self.notify(f"History cleaned. Deleted {before_count} conversation(s).")
+
+    async def load_conversation(self, conversation_id: str) -> bool:
+        conversations = await self.storage.list_conversations()
+        conversation = next((c for c in conversations if c.get("id") == conversation_id), None)
+        if not conversation:
+            self.notify("Conversation not found.", severity="error")
+            return False
+
+        messages = await self.storage.get_messages(conversation_id)
+        self.conversation_id = conversation_id
+        self.conversation_title = conversation.get("title", "Conversation")
+        self.is_new_conversation = False
+        self.messages = list(messages)
+        self.pending_user_queue = []
+        self.plan_tracker = None
+
+        chat_screen: ChatScreen
+        if isinstance(self.screen, ChatScreen):
+            chat_screen = self.screen
+        else:
+            chat_screen = ChatScreen()
+            await self.push_screen(chat_screen)
+
+        if isinstance(chat_screen, ChatScreen):
+            area = chat_screen.query_one("#message-area", ChatArea)
+            area.clear()
+            chat_screen.update_queue_overlay([])
+            chat_screen.query_one("#conv-title").update(self.conversation_title)
+            for msg in messages:
+                role = msg.get("role", "assistant")
+                content = msg.get("content", "")
+                if role in {"system"}:
+                    continue
+                if role == "assistant" and not content.strip():
+                    continue
+                if role == "tool":
+                    tool_name = msg.get("name", "tool")
+                    tool_call_id = msg.get("tool_call_id", f"history-{len(content)}-{tool_name}")
+                    chat_screen.add_tool_call(tool_call_id, tool_name, {})
+                    chat_screen.add_tool_result(tool_call_id, tool_name, content)
+                else:
+                    chat_screen.add_message(role, content)
+            chat_screen.query_one("#chat-input", Input).focus()
+            self.refresh_context_info()
+            return True
+
+        return False
+
+    def refresh_context_info(self) -> None:
+        stats = session_tracker.get_total_stats()
+        input_tokens = int(stats.get("input_tokens", 0))
+        output_tokens = int(stats.get("output_tokens", 0))
+        total_tokens = int(stats.get("total_tokens", 0))
+        context_limit = CONTEXT_LIMIT_TOKENS
+        self.context_remaining = max(0, 100 - int((total_tokens / context_limit) * 100))
+        if isinstance(self.screen, ChatScreen):
+            try:
+                self.screen.query_one("#context-info", Label).update(
+                    f"Context: {self.context_remaining}% • in {self._format_short(input_tokens)} out {self._format_short(output_tokens)}"
+                )
+            except Exception:
+                pass
 
     @work(exclusive=True)
     async def check_updates_on_startup(self) -> None:
@@ -365,7 +527,6 @@ class OpenDevApp(App):
         if is_currency:
             return f"${num:.4f}" if num < 0.01 else f"${num:.2f}"
         return f"{num / 1000:.1f}K" if num >= 1000 else str(int(num))
-
 
 def main():
     import argparse

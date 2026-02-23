@@ -265,6 +265,91 @@ def _copy_file_sync(source: str, destination: str) -> str:
     return f"Success: Copied {source} -> {destination}"
 
 
+async def read_files_batch(
+    filepaths: list[str],
+    start_line: Optional[int] = None,
+    end_line: Optional[int] = None,
+    max_chars_per_file: int = 20000,
+) -> str:
+    try:
+        return await asyncio.to_thread(
+            _read_files_batch_sync,
+            filepaths,
+            start_line,
+            end_line,
+            max_chars_per_file,
+        )
+    except Exception as e:
+        return f"Error: {type(e).__name__}: {str(e)}"
+
+
+def _read_files_batch_sync(
+    filepaths: list[str],
+    start_line: Optional[int],
+    end_line: Optional[int],
+    max_chars_per_file: int,
+) -> str:
+    if not filepaths:
+        return "Error: filepaths is required"
+
+    max_chars = max(500, min(int(max_chars_per_file), 100000))
+    chunks: list[str] = []
+    for filepath in filepaths[:50]:
+        content = _read_file_sync(filepath, start_line, end_line)
+        if content.startswith("Error:"):
+            chunks.append(f"## {filepath}\n{content}")
+            continue
+        if len(content) > max_chars:
+            content = content[:max_chars] + "\n... (truncated)"
+        chunks.append(f"## {filepath}\n{content}")
+    return "\n\n".join(chunks)
+
+
+async def replace_regex(
+    filepath: str,
+    pattern: str,
+    replacement: str,
+    max_replacements: int = 0,
+) -> str:
+    try:
+        return await asyncio.to_thread(
+            _replace_regex_sync, filepath, pattern, replacement, max_replacements
+        )
+    except Exception as e:
+        return f"Error: {type(e).__name__}: {str(e)}"
+
+
+def _replace_regex_sync(
+    filepath: str,
+    pattern: str,
+    replacement: str,
+    max_replacements: int,
+) -> str:
+    import re
+
+    path = Path(filepath).expanduser()
+    if not path.exists():
+        return f"Error: File not found: {filepath}"
+
+    content = path.read_text(encoding="utf-8", errors="ignore")
+    try:
+        regex = re.compile(pattern, re.MULTILINE)
+    except re.error as e:
+        return f"Error: Invalid regex pattern: {str(e)}"
+
+    replacement_limit = max(0, int(max_replacements))
+    new_content, count = regex.subn(
+        replacement,
+        content,
+        count=replacement_limit if replacement_limit > 0 else 0,
+    )
+    if count == 0:
+        return "Error: No regex matches found"
+
+    path.write_text(new_content, encoding="utf-8")
+    return f"Success: Replaced {count} occurrence(s) in {filepath}"
+
+
 FILE_TOOLS = [
     {
         "name": "get_file_tree",
@@ -410,5 +495,54 @@ FILE_TOOLS = [
             "required": ["source", "destination"],
         },
         "handler": copy_file,
+    },
+    {
+        "name": "read_files_batch",
+        "description": "Read multiple files in one tool call. Useful for comparing related files quickly.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "filepaths": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of file paths to read",
+                },
+                "start_line": {
+                    "type": "integer",
+                    "description": "Start line number (1-indexed)",
+                },
+                "end_line": {
+                    "type": "integer",
+                    "description": "End line number (1-indexed)",
+                },
+                "max_chars_per_file": {
+                    "type": "integer",
+                    "description": "Maximum output characters per file",
+                    "minimum": 500,
+                    "maximum": 100000,
+                },
+            },
+            "required": ["filepaths"],
+        },
+        "handler": read_files_batch,
+    },
+    {
+        "name": "replace_regex",
+        "description": "Replace text by regex pattern in a file. Use after read_file/search confirmation.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "filepath": {"type": "string", "description": "Path to the file"},
+                "pattern": {"type": "string", "description": "Regex pattern"},
+                "replacement": {"type": "string", "description": "Replacement text"},
+                "max_replacements": {
+                    "type": "integer",
+                    "description": "Max replacement count, 0 means replace all",
+                    "minimum": 0,
+                },
+            },
+            "required": ["filepath", "pattern", "replacement"],
+        },
+        "handler": replace_regex,
     },
 ]

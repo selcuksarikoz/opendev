@@ -3,12 +3,78 @@ import time
 from typing import Any
 from app.utils.session_stats import session_tracker
 from app.utils.logger import log_error
+from app.logic.tool_orchestrator import ToolOrchestrator
+from app.core.runtime_config import (
+    PLAN_PROMPT_TEMPLATE,
+    PLAN_SKIP_TOKEN,
+    AI_DEFAULT_MAX_TOKENS,
+    AI_DEFAULT_TEMPERATURE,
+    AI_DEFAULT_TOP_P,
+    TOOL_MAX_PARALLEL,
+)
 
 
 class AIHandler:
     def __init__(self, app):
         self.app = app
-        self.max_tool_rounds = 8
+        self.max_parallel_tools = TOOL_MAX_PARALLEL
+        self.tool_orchestrator = ToolOrchestrator(app, self.max_parallel_tools)
+
+    async def generate_plan(self, user_input: str) -> str:
+        if not self.app.http_service:
+            return ""
+        self._show_loading("AI is planning...")
+        planning_prompt = PLAN_PROMPT_TEMPLATE.format(user_input=user_input)
+        planning_messages = list(self.app.messages) + [
+            {"role": "user", "content": planning_prompt}
+        ]
+        chunks: list[str] = []
+        try:
+            async for chunk_type, data in self.app.http_service.chat(
+                planning_messages,
+                tools=[],
+                stream=False,
+                max_tokens=600,
+                temperature=0.2,
+            ):
+                if chunk_type == "content" and data:
+                    chunks.append(str(data))
+        except Exception as e:
+            log_error("Plan generation failed", e)
+            self.app.notify(f"Plan generation failed: {str(e)}", severity="error")
+            return ""
+        finally:
+            self._clear_loading()
+        result = "\n".join(chunks).strip()
+        if result.upper() == PLAN_SKIP_TOKEN:
+            return PLAN_SKIP_TOKEN
+        return result
+
+    def _show_loading(self, text: str) -> None:
+        try:
+            from app.ui.widgets import LoadingMessage
+
+            area = self._get_chat_area()
+            if area is None:
+                return
+            for child in list(area.children):
+                if isinstance(child, LoadingMessage):
+                    child.remove()
+            area.mount(LoadingMessage(text))
+            area.scroll_end()
+        except Exception:
+            pass
+
+    def _get_chat_area(self):
+        try:
+            from app.ui.screens import ChatScreen
+            from app.ui.widgets import ChatArea
+
+            if not isinstance(self.app.screen, ChatScreen):
+                return None
+            return self.app.screen.query_one(ChatArea)
+        except Exception:
+            return None
 
     async def get_response(self, user_input: str):
         if not self.app.http_service:
@@ -16,22 +82,23 @@ class AIHandler:
         self.app.is_streaming = True
         pending_writes = []
         response_text, reasoning_text = "", ""
-        tool_round = 0
+        accumulated_response_text = ""
+        assistant_stream_started = False
         last_tool_calls: list[dict[str, Any]] = []
-        seen_signatures: set[str] = set()
 
         try:
             while self.app.is_streaming:
                 response_text = ""
                 reasoning_text = ""
                 tool_calls = []
+                streamed_assistant_preview = False
                 tools = self.app.tool_manager.get_tools_for_api()
                 ui_update_interval, last_update = 0.3, 0
 
-                if hasattr(self.app.screen, "query_one"):
-                    from app.ui.widgets import LoadingMessage, ChatArea
+                area = self._get_chat_area()
+                if area is not None:
+                    from app.ui.widgets import LoadingMessage
 
-                    area = self.app.screen.query_one(ChatArea)
                     area.mount(LoadingMessage("AI is thinking..."))
                     area.scroll_end()
 
@@ -39,9 +106,13 @@ class AIHandler:
                     self.app.messages,
                     tools,
                     stream=True,
-                    max_tokens=int(self.app.ai_settings.get("max_tokens", 4096)),
-                    temperature=float(self.app.ai_settings.get("temperature", 0.5)),
-                    top_p=float(self.app.ai_settings.get("top_p", 1.0)),
+                    max_tokens=int(
+                        self.app.ai_settings.get("max_tokens", AI_DEFAULT_MAX_TOKENS)
+                    ),
+                    temperature=float(
+                        self.app.ai_settings.get("temperature", AI_DEFAULT_TEMPERATURE)
+                    ),
+                    top_p=float(self.app.ai_settings.get("top_p", AI_DEFAULT_TOP_P)),
                 ):
                     if not self.app.is_streaming:
                         break
@@ -57,10 +128,14 @@ class AIHandler:
                     elif chunk_type == "content":
                         if not response_text:
                             self._update_ui_status("AI is responding...")
-                        is_first = not response_text
                         response_text += data
-                        if now - last_update > ui_update_interval:
-                            self._update_ui_content(response_text, is_first)
+                        accumulated_response_text += data
+                        is_first = not assistant_stream_started
+                        if is_first or (now - last_update > ui_update_interval):
+                            self._update_ui_content(accumulated_response_text, is_first)
+                            if is_first:
+                                assistant_stream_started = True
+                            streamed_assistant_preview = True
                             last_update = now
                     elif chunk_type == "tool_call":
                         self._update_ui_status(f"Running tool: {data['name']}...")
@@ -71,7 +146,8 @@ class AIHandler:
                 last_tool_calls = tool_calls
 
                 # Message building and saving
-                msg = {"role": "assistant", "content": response_text or ""}
+                assistant_content = response_text or ""
+                msg = {"role": "assistant", "content": assistant_content}
                 if reasoning_text:
                     msg["reasoning"] = reasoning_text
                 if tool_calls:
@@ -87,44 +163,46 @@ class AIHandler:
                         for tc in tool_calls
                     ]
 
-                self.app.messages.append(msg)
-                pending_writes.append(
-                    {"conversation_id": self.app.conversation_id, **msg}
-                )
+                if assistant_content.strip() or reasoning_text or tool_calls:
+                    self.app.messages.append(msg)
+                    pending_writes.append(
+                        {"conversation_id": self.app.conversation_id, **msg}
+                    )
 
                 if not tool_calls:
                     break
 
-                tool_round += 1
-                if tool_round > self.max_tool_rounds:
-                    self.app.notify(
-                        "Stopped tool loop: reached max tool rounds.",
-                        severity="warning",
-                    )
-                    break
+                (
+                    should_continue,
+                    _round_exec_count,
+                    _round_failures,
+                    _round_handoffs,
+                    round_success_count,
+                ) = await self._execute_tools(
+                    tool_calls, pending_writes
+                )
+                if round_success_count > 0:
+                    self.app.advance_plan_progress(1)
 
-                signatures = self._tool_signatures(tool_calls)
-                if signatures and all(sig in seen_signatures for sig in signatures):
-                    self.app.notify(
-                        "Stopped tool loop: repeated tool call detected.",
-                        severity="warning",
-                    )
-                    break
-                seen_signatures.update(signatures)
-
-                if not await self._execute_tools(tool_calls, pending_writes):
+                if not should_continue:
                     break
 
             await self._finalize_stats()
+            if self.app.is_streaming:
+                self.app.finalize_plan_progress()
 
-            if response_text or reasoning_text:
-                self._finalize_message(response_text, reasoning_text, last_tool_calls)
+            if accumulated_response_text or reasoning_text:
+                self._finalize_message(
+                    accumulated_response_text, reasoning_text, last_tool_calls
+                )
 
         except Exception as e:
             log_error("AI Loop Error", e)
+            self._clear_loading()
             self.app.notify(f"Error: {str(e)}", severity="error")
         finally:
             self.app.is_streaming = False
+            self._clear_loading()
             if not getattr(self.app, "is_shutting_down", False):
                 for w in pending_writes:
                     try:
@@ -172,30 +250,28 @@ class AIHandler:
 
     def _clear_loading(self):
         try:
-            from app.ui.widgets import LoadingMessage, ChatArea
+            from app.ui.widgets import LoadingMessage
 
-            area = self.app.screen.query_one(ChatArea)
+            area = self._get_chat_area()
+            if area is None:
+                return
             for child in area.children:
                 if isinstance(child, LoadingMessage):
                     child.remove()
-            if (
-                area.children
-                and hasattr(area.children[-1], "role")
-                and area.children[-1].role == "assistant"
-            ):
-                area.children[-1].remove()
-        except:
+        except Exception:
             pass
 
     def _update_ui_status(self, text: str):
         try:
-            from app.ui.widgets import LoadingMessage, ChatArea
+            from app.ui.widgets import LoadingMessage
 
-            area = self.app.screen.query_one(ChatArea)
+            area = self._get_chat_area()
+            if area is None:
+                return
             if area.children and isinstance(area.children[-1], LoadingMessage):
                 area.children[-1].update_message(text)
                 area.scroll_end()
-        except:
+        except Exception:
             pass
 
     def _update_ui_content(self, text: str, is_first: bool):
@@ -207,7 +283,22 @@ class AIHandler:
                     self.app.screen.add_message("assistant", text, is_first_chunk=True)
                 else:
                     self.app.screen.update_last_assistant_message(text)
-        except:
+        except Exception:
+            pass
+
+    def _remove_last_assistant_preview(self) -> None:
+        try:
+            from app.ui.widgets import ChatMessage
+
+            area = self._get_chat_area()
+            if area is None:
+                return
+            messages = area.query(ChatMessage)
+            if messages:
+                last_message = messages.last()
+                if getattr(last_message, "role", None) == "assistant":
+                    last_message.remove()
+        except Exception:
             pass
 
     def _process_tool_calls(self, tool_calls):
@@ -216,37 +307,25 @@ class AIHandler:
 
             if isinstance(self.app.screen, ChatScreen):
                 for tc in tool_calls:
-                    self.app.screen.add_tool_call(tc["name"], tc["arguments"])
-        except:
+                    self.app.screen.add_tool_call(
+                        tc.get("id", ""),
+                        tc["name"],
+                        tc.get("arguments", {}),
+                    )
+        except Exception:
             pass
 
-    async def _execute_tools(self, tool_calls, pending_writes) -> bool:
-        # Simplified for brevity, would include permission checks from app.py
-        seen_in_round: set[str] = set()
-        for tc in tool_calls:
-            sig = self._tool_signatures([tc])[0]
-            if sig in seen_in_round:
-                continue
-            seen_in_round.add(sig)
-            result = await self.app.tool_manager.execute(tc["name"], tc["arguments"])
-            tool_msg = {
-                "role": "tool",
-                "tool_call_id": tc["id"],
-                "name": tc["name"],
-                "content": str(result),
-            }
-            self.app.messages.append(tool_msg)
-            pending_writes.append(
-                {"conversation_id": self.app.conversation_id, **tool_msg}
-            )
-            session_tracker.record_tool_call(
-                success=not str(result).startswith("Error:")
-            )
-        return True
+    async def _execute_tools(
+        self, tool_calls, pending_writes
+    ) -> tuple[bool, int, set[str], int, int]:
+        return await self.tool_orchestrator.execute_tools(
+            tool_calls=tool_calls,
+            pending_writes=pending_writes,
+            signature_fn=self._tool_signatures,
+        )
 
     async def _finalize_stats(self):
         stats = session_tracker.get_total_stats()
-        total, limit = stats.get("total_tokens", 0), 128_000
-        self.app.context_remaining = max(0, 100 - int((total / limit) * 100))
+        self.app.refresh_context_info()
         if self.app.context_remaining < 20 and len(self.app.messages) > 10:
             self.app.compact_conversation()

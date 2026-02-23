@@ -1,15 +1,23 @@
 import json
 import shutil
 import uuid
+from collections import OrderedDict
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Any
 from .internal.encryption import EncryptionManager
 from .internal.database import DatabaseManager
+from app.core.runtime_config import (
+    AI_DEFAULT_MAX_TOKENS,
+    AI_DEFAULT_TEMPERATURE,
+    AI_DEFAULT_TOP_P,
+)
 
 
 class Storage:
     _instance = None
+    MAX_MESSAGES_CACHE_CONVERSATIONS = 24
+    MAX_RECENT_HISTORY_CACHE = 500
 
     def __new__(cls, *args, **kwargs):
         if not cls._instance:
@@ -26,6 +34,11 @@ class Storage:
 
         self.db = DatabaseManager(self.db_path)
         self.encryption = EncryptionManager(key_file)
+        self._history_columns: Optional[set[str]] = None
+        self._api_key_cache: dict[str, str] = {}
+        self._messages_cache: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
+        self._conversations_cache: Optional[list[dict[str, Any]]] = None
+        self._recent_user_history_cache: Optional[list[str]] = None
         self._initialized = True
 
     def _migrate_legacy_storage(self) -> None:
@@ -62,12 +75,18 @@ class Storage:
             "INSERT OR REPLACE INTO api_keys (provider, encrypted_key) VALUES (?, ?)",
             (provider, encrypted),
         )
+        self._api_key_cache[provider] = api_key
 
     async def get_api_key(self, provider: str) -> Optional[str]:
+        if provider in self._api_key_cache:
+            return self._api_key_cache[provider]
         row = await self.db.fetchone(
             "SELECT encrypted_key FROM api_keys WHERE provider = ?", (provider,)
         )
-        return self.encryption.decrypt(row[0]) if row else None
+        api_key = self.encryption.decrypt(row[0]) if row else None
+        if api_key:
+            self._api_key_cache[provider] = api_key
+        return api_key
 
     async def create_conversation(self, conversation_id: str, title: str):
         now = datetime.now().isoformat()
@@ -75,12 +94,14 @@ class Storage:
             "INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
             (conversation_id, title, now, now),
         )
+        self._conversations_cache = None
 
     async def update_conversation_title(self, conversation_id: str, title: str):
         await self.db.execute(
             "UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?",
             (title, datetime.now().isoformat(), conversation_id),
         )
+        self._conversations_cache = None
 
     async def save_message(
         self,
@@ -105,8 +126,34 @@ class Storage:
             "UPDATE conversations SET updated_at = ? WHERE id = ?",
             (datetime.now().isoformat(), conversation_id),
         )
+        self._conversations_cache = None
+        self._messages_cache.pop(conversation_id, None)
+        if role == "user":
+            history_cols = await self._get_history_columns()
+            now = datetime.now().isoformat()
+            if {"conversation_id", "content", "timestamp"}.issubset(history_cols):
+                if "prompt" in history_cols:
+                    await self.db.execute(
+                        "INSERT INTO history (conversation_id, content, prompt, timestamp) VALUES (?, ?, ?, ?)",
+                        (conversation_id, content, content, now),
+                    )
+                else:
+                    await self.db.execute(
+                        "INSERT INTO history (conversation_id, content, timestamp) VALUES (?, ?, ?)",
+                        (conversation_id, content, now),
+                    )
+            elif {"prompt", "timestamp"}.issubset(history_cols):
+                await self.db.execute(
+                    "INSERT INTO history (prompt, timestamp) VALUES (?, ?)",
+                    (content, now),
+                )
+            self._recent_user_history_cache = None
 
     async def get_messages(self, conversation_id: str) -> list[dict[str, Any]]:
+        cached = self._messages_cache.get(conversation_id)
+        if cached is not None:
+            self._messages_cache.move_to_end(conversation_id)
+            return [dict(m) for m in cached]
         rows = await self.db.fetchall(
             "SELECT role, content, tool_calls, reasoning FROM messages WHERE conversation_id = ? ORDER BY id ASC",
             (conversation_id,),
@@ -119,20 +166,40 @@ class Storage:
             if row[3]:
                 msg["reasoning"] = row[3]
             messages.append(msg)
+        self._messages_cache[conversation_id] = [dict(m) for m in messages]
+        self._messages_cache.move_to_end(conversation_id)
+        while len(self._messages_cache) > self.MAX_MESSAGES_CACHE_CONVERSATIONS:
+            self._messages_cache.popitem(last=False)
         return messages
 
     async def list_conversations(self) -> list[dict[str, Any]]:
+        if self._conversations_cache is not None:
+            return [dict(c) for c in self._conversations_cache]
         rows = await self.db.fetchall(
             "SELECT id, title, updated_at FROM conversations ORDER BY updated_at DESC"
         )
-        return [{"id": row[0], "title": row[1], "updated_at": row[2]} for row in rows]
+        conversations = [
+            {"id": row[0], "title": row[1], "updated_at": row[2]} for row in rows
+        ]
+        self._conversations_cache = [dict(c) for c in conversations]
+        return conversations
 
     async def delete_all_conversations(self) -> None:
+        await self.db.execute("DELETE FROM history")
         await self.db.execute("DELETE FROM messages")
         await self.db.execute("DELETE FROM conversations")
+        self._messages_cache.clear()
+        self._conversations_cache = []
+        self._recent_user_history_cache = []
 
     async def delete_conversations_except(self, keep_conversation_id: Optional[str]) -> None:
         if keep_conversation_id:
+            history_cols = await self._get_history_columns()
+            if "conversation_id" in history_cols:
+                await self.db.execute(
+                    "DELETE FROM history WHERE conversation_id != ?",
+                    (keep_conversation_id,),
+                )
             await self.db.execute(
                 "DELETE FROM messages WHERE conversation_id != ?",
                 (keep_conversation_id,),
@@ -141,8 +208,52 @@ class Storage:
                 "DELETE FROM conversations WHERE id != ?",
                 (keep_conversation_id,),
             )
+            kept = self._messages_cache.get(keep_conversation_id)
+            self._messages_cache = OrderedDict()
+            if kept is not None:
+                self._messages_cache[keep_conversation_id] = kept
+            self._conversations_cache = None
+            self._recent_user_history_cache = None
         else:
             await self.delete_all_conversations()
+
+    async def _get_history_columns(self) -> set[str]:
+        if self._history_columns is not None:
+            return self._history_columns
+        rows = await self.db.fetchall("PRAGMA table_info(history)")
+        self._history_columns = {row[1] for row in rows}
+        return self._history_columns
+
+    async def get_recent_user_history(self, limit: int = 200) -> list[str]:
+        if self._recent_user_history_cache is not None:
+            return self._recent_user_history_cache[: max(1, min(int(limit), 1000))]
+        history_cols = await self._get_history_columns()
+        if not history_cols:
+            return []
+
+        rows: list[Any]
+        safe_limit = max(1, min(int(limit), 1000))
+
+        if "content" in history_cols:
+            rows = await self.db.fetchall(
+                "SELECT content FROM history WHERE content IS NOT NULL AND TRIM(content) != '' ORDER BY id DESC LIMIT ?",
+                (safe_limit,),
+            )
+        elif "prompt" in history_cols:
+            rows = await self.db.fetchall(
+                "SELECT prompt FROM history WHERE prompt IS NOT NULL AND TRIM(prompt) != '' ORDER BY id DESC LIMIT ?",
+                (safe_limit,),
+            )
+        else:
+            return []
+
+        # Input history expects chronological order (oldest -> newest).
+        ordered = list(reversed(rows))
+        result = [str(row[0]) for row in ordered if row and row[0]]
+        if len(result) > self.MAX_RECENT_HISTORY_CACHE:
+            result = result[-self.MAX_RECENT_HISTORY_CACHE :]
+        self._recent_user_history_cache = list(result)
+        return result
 
     async def save_setting(self, key: str, value: str):
         await self.db.execute(
@@ -150,7 +261,11 @@ class Storage:
         )
 
     async def get_all_settings(self) -> dict[str, Any]:
-        defaults = {"max_tokens": "4096", "temperature": "0.5", "top_p": "1.0"}
+        defaults = {
+            "max_tokens": str(AI_DEFAULT_MAX_TOKENS),
+            "temperature": str(AI_DEFAULT_TEMPERATURE),
+            "top_p": str(AI_DEFAULT_TOP_P),
+        }
         rows = await self.db.fetchall("SELECT key, value FROM settings")
         for row in rows:
             defaults[row[0]] = row[1]

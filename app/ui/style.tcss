@@ -56,12 +56,48 @@ Screen {
     margin-left: 2;
 }
 
+#mode-hint-bar {
+    height: 1;
+    width: 100%;
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+.hint-chip {
+    width: auto;
+    color: #c7d6ea;
+    background: #1e324a;
+    padding: 0 1;
+    margin-right: 1;
+    text-style: bold;
+}
+
+.mode-chip {
+    width: auto;
+    color: #8ea1b8;
+    background: transparent;
+    padding: 0 1;
+    margin-right: 1;
+}
+
+.mode-chip.mode-chip-active {
+    color: #eaf2ff;
+    background: #22344a;
+    text-style: bold;
+}
+
+.mode-agent-right {
+    width: 1fr;
+    text-align: right;
+    color: #8fa4bd;
+}
+
 /* Message Area - Scrollable region for chat history */
 #message-area {
     width: 98%; 
     max-width: 180;
     height: 1fr; 
-    padding: 0 0;
+    padding: 0 0 0 0;
     margin: 0 0;
     scrollbar-size: 0 0; 
     overflow-y: scroll;
@@ -82,24 +118,27 @@ Screen {
     height: auto;
     width: 100%;
     min-height: 1;
-    margin-bottom: 0;
-    padding: 0 1;
+    margin: 0 0 1 0;
+    padding: 0 0;
     display: none;
     align-vertical: middle;
 }
 
 .queue-chip {
     width: auto;
-    background: #21262d;
-    color: #c9d1d9;
+    background: #1c2430;
+    color: #9fc4ff;
     text-style: bold;
     margin-right: 1;
+    padding: 0 1;
 }
 
 .queue-msg {
     width: auto;
-    color: #8b949e;
+    color: #b6c2d2;
     margin-right: 2;
+    background: #131a23;
+    padding: 0 1;
 }
 
 #input-wrapper {
@@ -110,7 +149,7 @@ Screen {
 }
 
 #chat-meta {
-    height: 1;
+    height: 0;
     margin-top: 0;
     align-horizontal: right;
     display: none;
@@ -129,12 +168,13 @@ Screen {
     color: #8b949e;
 }
 
+
 /* --- MESSAGE WRAPPERS & CONTAINERS --- */
 
 .message-container {
     width: 100%;
     height: auto;
-    margin-bottom: 0;
+    margin: 0 0 1 0;
     padding: 0;
     align-horizontal: center;
 }
@@ -153,58 +193,103 @@ Screen {
     background: transparent;
     padding: 0 2;
     margin: 0;
-    border-left: solid transparent; 
+    border: none;
+    border-left: wide transparent;
 }
 
-/* User-specific: thick cyan border */
 .user-bubble {
-    border-left: solid #39d353;
+    background: transparent;
+    border-left: wide #39d353;
 }
 
-/* Assistant-specific: thick blue border */
 .assistant-bubble {
-    border-left: solid #58a6ff;
+    background: transparent;
+    border-left: wide #58a6ff;
 }
 
-/* Tool calls and internal thinking status - shared blue border for a grouped look */
-.tool-call-container, .status-muted {
-    border-left: solid #58a6ff;
+.thinking-bubble, .reasoning-bubble, .todo-bubble, .diff-bubble {
+    background: transparent;
+    border-left: wide #7a8698;
 }
 
 .tool-call-container {
-    height: 1;
+    height: auto;
+    background: transparent;
+    padding: 0 2;
+    border-left: wide #2f3845;
 }
 
-/* Tool call details (icon, name, arguments) */
-.tool-icon {
+.tool-head {
+    width: 1fr;
+    height: auto;
+}
+
+.tool-chip {
     width: auto;
+    color: #b3c4d8;
+    background: #1a2432;
+    padding: 0 1;
     margin-right: 1;
-    color: #39d353;
+    text-style: bold;
+}
+
+.tool-status.running {
+    color: #ffe19e;
+    background: #3a2c18;
+}
+
+.tool-status.success {
+    color: #b8f5c2;
+    background: #173324;
+}
+
+.tool-status.error {
+    color: #ffc0c0;
+    background: #3a1d24;
+}
+
+.tool-duration {
+    color: #8fa4bd;
+    background: #152131;
 }
 
 .tool-name {
     width: auto;
-    text-style: bold;
-    color: #8b949e;
+    text-style: none;
+    color: #9fb0c4;
     margin-right: 1;
 }
 
 .tool-args {
-    width: auto;
-    color: #6e7681;
-    text-style: italic;
+    width: 1fr;
+    color: #7f91a7;
 }
 
-/* Muted status text (e.g., 'Thinking...') */
+.tool-output {
+    width: 1fr;
+    color: #728198;
+    margin-top: 0;
+}
+
 .status-muted {
-    color: #6e7681;
-    text-style: italic;
-    height: 1;
+    color: #9fb0c3;
+    text-style: bold;
+    background: transparent;
+    padding: 0 2;
 }
 
 .content-label, .content-md {
     width: 1fr;
-    color: #ffffff;
+    color: #eef3fb;
+}
+
+.special-bubble .content-label {
+    color: #c6d0df;
+}
+
+.content-md {
+    padding-top: 0;
+    padding-bottom: 0;
 }
 
 /* --- MARKDOWN SPACING OPTIMIZATION --- */
@@ -226,11 +311,6 @@ Markdown > Paragraph {
 Markdown > Heading {
     margin-top: 1;
     margin-bottom: 0;
-}
-
-/* Special borders for reasoning/thinking blocks within assistant turns */
-.thinking-bubble, .reasoning-bubble, .todo-bubble, .diff-bubble {
-    border-left: solid #58a6ff 40%;
 }
 
 /* --- INPUTS & FORMS --- */
@@ -255,6 +335,10 @@ Input:focus {
     max-width: 120;
     height: auto;
     align: center middle;
+}
+
+#initial-input {
+    height: 1;
 }
 
 #logo {
@@ -293,7 +377,7 @@ LoadingIndicator.visible {
     display: block;
 }
 
-SelectionModal, ApiKeyModal, PermissionModal {
+SelectionModal, ApiKeyModal, PermissionModal, PlanConfirmModal {
     align: center middle;
 }
 
@@ -312,16 +396,17 @@ SelectionModal, ApiKeyModal, PermissionModal {
 #autocomplete-list {
     position: absolute;
     layer: overlay;
-    background: #161b22;
-    color: #f8fafc;
+    background: #121a25;
+    color: #d2dbe8;
     height: auto;
-    min-height: 4;
-    max-height: 14;
+    max-height: 6;
     width: 60;
     display: none;
     overflow-x: hidden;
     overflow-y: auto;
     padding: 0;
+    margin: 0;
+    scrollbar-size: 1 1;
 }
 
 #autocomplete-list.visible {
@@ -329,16 +414,40 @@ SelectionModal, ApiKeyModal, PermissionModal {
 }
 
 #autocomplete-list ListItem {
-    color: #c9d1d9;
+    color: #9fb0c4;
     padding: 0 1;
     height: 1;
-    background: transparent;
+    background: #121a25;
+    border-left: tall transparent;
+}
+
+#autocomplete-list .autocomplete-text {
+    width: 1fr;
+}
+
+#autocomplete-list ListItem.autocomplete-dir .autocomplete-text {
+    color: #9fdce8;
+}
+
+#autocomplete-list ListItem.autocomplete-cmd .autocomplete-text {
+    color: #a3caff;
+}
+
+#autocomplete-list ListItem.autocomplete-branch .autocomplete-text {
+    color: #c7c3ff;
 }
 
 #autocomplete-list ListItem:focus,
 #autocomplete-list ListItem.-highlight {
-    background: #21262d;
+    background: #1f3348;
     color: #ffffff;
+    text-style: bold;
+}
+
+#autocomplete-list ListItem.is-current {
+    background: #1f3348;
+    color: #ffffff;
+    text-style: bold;
 }
 
 Button {

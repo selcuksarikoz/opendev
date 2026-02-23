@@ -1,11 +1,13 @@
 import uuid
 from app.ui.widgets import SelectionModal, ApiKeyModal
+from app.core.runtime_config import COMMANDS_HELP_TEXT
 from app.utils import (
     get_provider_names,
     get_provider_models,
     set_default_provider,
     set_default_model,
 )
+from app.prompts import get_agent_names, get_agent_description
 
 
 class CommandHandler:
@@ -23,19 +25,27 @@ class CommandHandler:
 
         if cmd.startswith("/help"):
             self.app.notify(
-                "Commands: /new, /clear, /model, /agents, /clean history, /update, /help, /settings, /compact",
+                COMMANDS_HELP_TEXT,
                 severity="information",
             )
 
-        elif cmd.startswith("/new") or cmd.startswith("/clear"):
+        elif cmd.startswith("/new"):
             await self._handle_new_chat()
 
         elif cmd.startswith("/compact"):
             if self.app.messages:
                 self.app.compact_conversation()
+            else:
+                self.app.notify("Nothing to compact.", severity="information")
+
+        elif cmd.startswith("/conversations"):
+            await self._show_conversations()
 
         elif cmd.startswith("/model"):
             await self._start_model_selection()
+
+        elif cmd.startswith("/agents"):
+            await self._start_agent_selection()
 
         elif cmd.startswith("/clean history"):
             await self.app.clean_history()
@@ -44,14 +54,40 @@ class CommandHandler:
             self.app.run_update()
 
         elif cmd.startswith("/settings"):
-            from app.ui.screens import SettingsScreen
+            await self.app.open_settings()
 
-            settings = await self.app.push_screen(SettingsScreen(self.app.ai_settings))
-            if settings:
-                for key, value in settings.items():
-                    await self.app.storage.save_setting(key, value)
-                self.app.ai_settings = settings
-                self.app.notify("Settings saved.")
+    async def _show_conversations(self) -> None:
+        conversations = await self.app.storage.list_conversations()
+        if not conversations:
+            self.app.notify("No saved conversations found.", severity="information")
+            return
+
+        items = []
+        for c in conversations:
+            updated = (c.get("updated_at", "") or "").replace("T", " ")
+            if len(updated) > 19:
+                updated = updated[:19]
+            title = c.get("title", "Untitled")
+            items.append(
+                {
+                    "id": c.get("id"),
+                    "label": f"{title}  [{updated}]",
+                }
+            )
+
+        selected = await self.app.push_screen(
+            SelectionModal("Select Conversation", items, display_key="label")
+        )
+        if not selected:
+            return
+
+        conv_id = selected.get("id") if isinstance(selected, dict) else None
+        if not conv_id:
+            return
+
+        loaded = await self.app.load_conversation(conv_id)
+        if not loaded:
+            self.app.notify("Could not open selected conversation.", severity="error")
 
     async def _start_model_selection(self):
         from app.utils.config import get_provider
@@ -134,7 +170,7 @@ class CommandHandler:
             )
             self.app.push_screen(modal, callback=on_api_key_saved)
 
-        self.app.call_later(ask_for_optional_key)
+        self.app.run_worker(ask_for_optional_key(), exclusive=False)
 
     def _apply_model_selection(self):
         from app.utils import set_default_provider, set_default_model
@@ -156,7 +192,7 @@ class CommandHandler:
                 pass
                 # self.app.screen.update_status()
 
-        self.app.call_later(do_switch)
+        self.app.run_worker(do_switch(), exclusive=False)
         self.app.notify(f"Switched to {provider} / {model}")
         self._reset_model_selection()
 
@@ -180,4 +216,29 @@ class CommandHandler:
         self.app.is_new_conversation = True
         self.app.messages = []
         self.app.conversation_title = "New Chat"
+        self.app.plan_tracker = None
         self.app.notify("New conversation started")
+
+    async def _start_agent_selection(self) -> None:
+        agent_names = get_agent_names()
+        if not agent_names:
+            self.app.notify("No agents configured.", severity="error")
+            return
+
+        items = [
+            {
+                "id": name,
+                "label": f"{name} - {get_agent_description(name)}",
+            }
+            for name in agent_names
+        ]
+        selected = await self.app.push_screen(
+            SelectionModal("Select Agent", items, display_key="label")
+        )
+        if not selected:
+            return
+
+        agent_name = selected.get("id") if isinstance(selected, dict) else str(selected)
+        if not agent_name:
+            return
+        self.app.set_active_agent(agent_name)

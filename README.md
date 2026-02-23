@@ -35,7 +35,7 @@ If you want to run it in your dev environment:
 1. Clone the repository:
    ```bash
    git clone https://github.com/selcuksarikoz/opendev.git
-   cd open-dev
+   cd opendev
    ```
 2. Run using `uv`:
    ```bash
@@ -77,13 +77,9 @@ Add `dist\` to PATH or move `dist\opendev.exe` to a directory already in PATH.
 
 If you want to build a single binary for your specific OS (macOS, Linux, or Windows):
 
-1. Install `PyInstaller`:
+1. Generate the build with `uv`:
    ```bash
-   pip install pyinstaller
-   ```
-2. Generate the build:
-   ```bash
-   pyinstaller --onefile --name opendev app/__main__.py
+   uv tool run pyinstaller --onefile --name opendev app/__main__.py
    ```
    The executable will be generated in the `dist/` folder. Build on each target OS for native binaries.
 

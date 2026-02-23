@@ -10,6 +10,7 @@ from app.utils import (
 from app.utils.session_stats import session_tracker
 from app.storage.storage import Storage
 from .prompt_builder import PromptBuilder
+from app.core.runtime_config import DEFAULT_AGENT_NAME
 
 
 class RateLimitError(Exception):
@@ -21,7 +22,7 @@ class HttpService:
         self,
         provider_name: Optional[str] = None,
         project_path: str = ".",
-        agent_name: str = "coder",
+        agent_name: str = DEFAULT_AGENT_NAME,
     ):
         provider = (
             get_provider(
@@ -37,6 +38,7 @@ class HttpService:
         self.prompt_builder = PromptBuilder(project_path, agent_name)
         self._api_key = ""
         self.client = None
+        self._tool_calling_disabled = False
 
         config_key = provider.get("api_key", "")
         self.api_key = config_key.strip()
@@ -75,6 +77,9 @@ class HttpService:
     def set_agent(self, agent_name: str) -> None:
         self.prompt_builder.agent_name = agent_name
 
+    def set_mode(self, mode: str) -> None:
+        self.prompt_builder.set_mode(mode)
+
     def _build_tools(self, tools: list[dict]) -> Optional[list[dict]]:
         if not tools:
             return None
@@ -97,6 +102,14 @@ class HttpService:
             "tool calling" in text and "not supported" in text
         ) or "param': 'tool calling'" in text
 
+    @staticmethod
+    def _is_stream_options_unsupported(error: Exception) -> bool:
+        text = str(error).lower()
+        return (
+            "stream_options" in text
+            and ("unsupported" in text or "not supported" in text or "unknown" in text)
+        )
+
     async def chat(
         self,
         messages: list[dict],
@@ -109,7 +122,9 @@ class HttpService:
 
         full_messages = self.prompt_builder.build_messages(
             messages, self.model)
-        openai_tools = self._build_tools(tools)
+        openai_tools = (
+            None if self._tool_calling_disabled else self._build_tools(tools)
+        )
         start_time = time.time()
         input_tokens, output_tokens = 0, 0
 
@@ -120,6 +135,10 @@ class HttpService:
 
             input_tokens, output_tokens = 0, 0
 
+            request_kwargs = dict(kwargs)
+            if stream:
+                request_kwargs["stream_options"] = {"include_usage": True}
+
             try:
                 response = await self.client.chat.completions.create(
                     model=self.model,
@@ -127,17 +146,28 @@ class HttpService:
                     tools=openai_tools,
                     stream=stream,
                     extra_body=extra_body if extra_body else None,
-                    **kwargs,
+                    **request_kwargs,
                 )
             except Exception as first_error:
-                if openai_tools and self._is_tool_calling_unsupported(first_error):
+                if request_kwargs.get("stream_options") and self._is_stream_options_unsupported(first_error):
+                    request_kwargs.pop("stream_options", None)
+                    response = await self.client.chat.completions.create(
+                        model=self.model,
+                        messages=full_messages,
+                        tools=openai_tools,
+                        stream=stream,
+                        extra_body=extra_body if extra_body else None,
+                        **request_kwargs,
+                    )
+                elif openai_tools and self._is_tool_calling_unsupported(first_error):
+                    self._tool_calling_disabled = True
                     response = await self.client.chat.completions.create(
                         model=self.model,
                         messages=full_messages,
                         tools=None,
                         stream=stream,
                         extra_body=extra_body if extra_body else None,
-                        **kwargs,
+                        **request_kwargs,
                     )
                 else:
                     raise
@@ -215,7 +245,7 @@ class HttpService:
                             {"id": tc["id"], "name": tc["name"],
                                 "arguments": args},
                         )
-                    except:
+                    except json.JSONDecodeError:
                         yield (
                             "tool_call",
                             {"id": tc["id"], "name": tc["name"],
