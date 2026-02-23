@@ -1,0 +1,2 @@
+5cbab744f6a23dcf3c1fced8c1dda527f276106c36cce521c4ad07be4f866b14  opendev-macos-arm64.tar.gz
+40a1522e7dc50bc41e062b7b504bdf5a360fdfbee6cf30276711839b1c6561a3  opendev-macos-x86_64.tar.gz
