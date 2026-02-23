@@ -47,6 +47,12 @@ uv run --with pyinstaller pyinstaller --onefile --name opendev run.py
 
 Move binary to your PATH (`~/.local/bin`, `/usr/local/bin`, etc.).
 
+On Apple Silicon, if you need an `x86_64` build, install Rosetta first:
+
+```bash
+softwareupdate --install-rosetta --agree-to-license
+```
+
 ## Providers and config
 
 - Providers file: `~/.opendev/providers.json`
@@ -113,6 +119,11 @@ Supported bumps:
 8. Create GitHub release and upload assets from `artifacts/`
 
 It rewrites `artifacts/` on each run (cleans old files first).
+
+For macOS dual-arch release builds:
+- `arm64` build runs natively.
+- `x86_64` build runs under Rosetta on Apple Silicon.
+- If Rosetta is missing, `scripts/build.sh` exits with an install hint.
 
 ## Notes
 
